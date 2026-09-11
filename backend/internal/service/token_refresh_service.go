@@ -142,6 +142,18 @@ func NewTokenRefreshService(
 	return s
 }
 
+func (s *TokenRefreshService) RegisterKimiOAuth(kimiOAuthService *KimiOAuthService) {
+	if s == nil || kimiOAuthService == nil {
+		return
+	}
+	refresher := NewKimiTokenRefresher(kimiOAuthService)
+	s.registrations = append(s.registrations, tokenRefreshRegistration{
+		platform:  PlatformKimi,
+		refresher: refresher,
+		executor:  refresher,
+	})
+}
+
 func (s *TokenRefreshService) eligiblePlatforms() []string {
 	platforms := make([]string, 0, len(s.registrations))
 	for _, registration := range s.registrations {

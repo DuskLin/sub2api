@@ -161,6 +161,33 @@ func TestClassifyOpenAICompatibleNoAccountError_GrokUsesGrokPlatform(t *testing.
 	require.EqualError(t, logErr, "no available Grok accounts supporting model: grok-4.5")
 }
 
+func TestClassifyNoAccountError_KimiModelOnOpenAIGroupExplainsPlatformMismatch(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
+	apiKey := &service.APIKey{
+		GroupID: ptrInt64(46),
+		Group:   &service.Group{ID: 46, Platform: service.PlatformOpenAI},
+	}
+
+	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "kimi-k3", "kimi-k3", service.PlatformOpenAI)
+
+	require.Equal(t, http.StatusNotFound, cls.Status)
+	require.Equal(t, "model_not_found", cls.ErrType)
+	require.True(t, cls.ModelNotFound)
+	require.Contains(t, cls.Message, "kimi-k3")
+	require.Contains(t, cls.Message, "Kimi")
+	require.Contains(t, cls.Message, "OpenAI")
+	require.Empty(t, fd.calls, "platform mismatch is decided before pool diagnosis")
+}
+
+func TestOpenAICompatibleSelectionErrorForLog_RewritesKimiNoun(t *testing.T) {
+	logErr := openAICompatibleSelectionErrorForLog(
+		fmt.Errorf("no available OpenAI accounts supporting model: kimi-k3 (pool=0)"),
+		service.PlatformKimi,
+	)
+	require.EqualError(t, logErr, "no available Kimi accounts supporting model: kimi-k3 (pool=0)")
+}
+
 func TestClassifyNoAccountError_PureClassifierDoesNotMarkGinContext(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}

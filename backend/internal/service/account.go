@@ -277,6 +277,46 @@ func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
 
+func (a *Account) IsKimiOAuth() bool {
+	return a != nil && a.IsKimi() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) GetKimiRegion() string {
+	if a == nil {
+		return KimiRegionMainlandCN
+	}
+	return NormalizeKimiRegion(a.GetCredential("region"))
+}
+
+func (a *Account) GetKimiAccessToken() string {
+	if !a.IsKimiOAuth() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetKimiRefreshToken() string {
+	if !a.IsKimiOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetKimiOAuthHost() string {
+	oauthHost, _, _ := KimiRegionEndpoints(a.GetKimiRegion())
+	if stored := strings.TrimRight(strings.TrimSpace(a.GetCredential("oauth_host")), "/"); stored != "" {
+		return stored
+	}
+	return oauthHost
+}
+
+func (a *Account) GetKimiDeviceID() string {
+	if a == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("device_id"))
+}
+
 func (a *Account) IsZhipu() bool {
 	return a.Platform == PlatformZhipu
 }
@@ -806,6 +846,9 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	if platform == PlatformKimi {
+		return normalizeKimiRequestedModel(trimmed)
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
@@ -813,6 +856,20 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 		return "gemini-3.1-pro-preview"
 	}
 	return trimmed
+}
+
+// normalizeKimiRequestedModel maps client-facing Kimi IDs onto Kimi Code
+// upstream IDs. Official coding catalogs expose k3 / k3-256k; clients and the
+// admin test picker commonly send kimi-k3 / kimi-k3-256k.
+func normalizeKimiRequestedModel(model string) string {
+	switch strings.ToLower(model) {
+	case "kimi-k3":
+		return "k3"
+	case "kimi-k3-256k":
+		return "k3-256k"
+	default:
+		return model
+	}
 }
 
 func mappingSupportsRequestedModel(mapping map[string]string, requestedModel string) bool {
@@ -1312,10 +1369,22 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 	return a != nil && a.IsOpenAI() && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
-// UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
-// accounts whose platform is implicit, while adding OpenAI SetupToken.
+// UsesOpenAICodexProtocol reports ChatGPT/Codex inference routing
+// (chatgpt.com Host, session_id isolation, Codex UA).
+//
+// OpenAI OAuth and SetupToken use that protocol. Legacy accounts stored as
+// Type=oauth with an implicit/empty platform do too — many tests and older
+// rows omit Platform. Explicit non-OpenAI OAuth (Kimi, Grok, ...) talks to
+// each provider's own upstream; treating them as Codex used to set
+// Host: chatgpt.com on Kimi /v1/responses and get an nginx 404.
 func (a *Account) UsesOpenAICodexProtocol() bool {
-	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike())
+	if a == nil {
+		return false
+	}
+	if a.IsOpenAIOAuthLike() {
+		return true
+	}
+	return a.Type == AccountTypeOAuth && strings.TrimSpace(a.Platform) == ""
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
@@ -1356,7 +1425,7 @@ func (a *Account) GetOpenAIBaseURL() string {
 			}
 		}
 	}
-	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream {
+	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream || a.IsKimiOAuth() {
 		if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
 			return baseURL
 		}
@@ -1364,8 +1433,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 	// 平台默认 base_url：CN 供应商按 account_mode 选择 payg / coding 默认值。
 	switch a.Platform {
 	case PlatformKimi:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingBaseURL
+		if a.IsKimiOAuth() || a.GetAccountMode() == AccountModeCoding {
+			return a.kimiCodingChatCompletionsBaseURL()
 		}
 		return DefaultKimiPayGBaseURL
 	case PlatformZhipu:
@@ -1397,6 +1466,9 @@ func (a *Account) GetAccountMode() string {
 
 // IsCodingPlan 报告账号是否为 Coding Plan 模式（用于滚动用量窗口冷却）。
 func (a *Account) IsCodingPlan() bool {
+	if a.IsKimiOAuth() {
+		return true
+	}
 	return a.GetAccountMode() == AccountModeCoding
 }
 
@@ -1484,8 +1556,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 	case APIProtocolAnthropic:
 		switch a.Platform {
 		case PlatformKimi:
-			if a.GetAccountMode() == AccountModeCoding {
-				return DefaultKimiCodingAnthropicBaseURL
+			if a.IsKimiOAuth() || a.GetAccountMode() == AccountModeCoding {
+				return a.kimiCodingAnthropicBaseURL()
 			}
 			return DefaultKimiPayGAnthropicBaseURL
 		case PlatformZhipu:
@@ -1498,8 +1570,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
 		case PlatformKimi:
-			if a.GetAccountMode() == AccountModeCoding {
-				return DefaultKimiCodingBaseURL
+			if a.IsKimiOAuth() || a.GetAccountMode() == AccountModeCoding {
+				return a.kimiCodingChatCompletionsBaseURL()
 			}
 			return DefaultKimiPayGBaseURL
 		case PlatformZhipu:
@@ -1514,6 +1586,16 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 		}
 	}
 	return ""
+}
+
+func (a *Account) kimiCodingChatCompletionsBaseURL() string {
+	_, codingBase, _ := KimiRegionEndpoints(a.GetKimiRegion())
+	return codingBase
+}
+
+func (a *Account) kimiCodingAnthropicBaseURL() string {
+	_, _, anthropicBase := KimiRegionEndpoints(a.GetKimiRegion())
+	return anthropicBase
 }
 
 // IsAnthropicProtocol 报告账号是否以原生 Anthropic 协议接入上游
@@ -1532,15 +1614,15 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 	if a.IsAdaptiveAPIProtocol() {
 		return a.GetCNProtocolBaseURL(APIProtocolAnthropic)
 	}
-	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream {
+	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream || a.IsKimiOAuth() {
 		if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
 			return baseURL
 		}
 	}
 	switch a.Platform {
 	case PlatformKimi:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingAnthropicBaseURL
+		if a.IsKimiOAuth() || a.GetAccountMode() == AccountModeCoding {
+			return a.kimiCodingAnthropicBaseURL()
 		}
 		return DefaultKimiPayGAnthropicBaseURL
 	case PlatformZhipu:
@@ -1565,8 +1647,8 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	}
 	switch a.Platform {
 	case PlatformKimi:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingBaseURL
+		if a.IsKimiOAuth() || a.GetAccountMode() == AccountModeCoding {
+			return a.kimiCodingChatCompletionsBaseURL()
 		}
 		return DefaultKimiPayGBaseURL
 	case PlatformZhipu:
@@ -1592,16 +1674,27 @@ func (a *Account) GetCNAPIKey() string {
 	return a.GetCredential("api_key")
 }
 
+// GetCNAuthToken 返回国产供应商请求鉴权令牌：Kimi Code OAuth 用 access_token，其余用 api_key。
+func (a *Account) GetCNAuthToken() string {
+	if a == nil || !a.IsCNProvider() {
+		return ""
+	}
+	if a.IsKimiOAuth() {
+		return a.GetKimiAccessToken()
+	}
+	return a.GetCNAPIKey()
+}
+
 // GetCodingPlanProvider 根据 base_url 识别 Coding Plan 供应商（kimi / zhipu / minimax），
 // 用于路由到对应的额度查询端点。非 coding 模式或无法识别时返回空串。
 // 只认官方域名：自定义中转不得把第三方 Key 发往厂商官方额度端点。
 func (a *Account) GetCodingPlanProvider() string {
-	if a == nil || a.GetAccountMode() != AccountModeCoding {
+	if a == nil || !a.IsCodingPlan() {
 		return ""
 	}
 	baseURL := strings.ToLower(a.GetOpenAIBaseURL())
 	switch {
-	case strings.Contains(baseURL, "api.kimi.com/coding"):
+	case strings.Contains(baseURL, "api.kimi.com/coding"), strings.Contains(baseURL, "api.kimi.ai/coding"):
 		return PlatformKimi
 	case strings.Contains(baseURL, "bigmodel.cn"), strings.Contains(baseURL, "api.z.ai"):
 		return PlatformZhipu
@@ -1733,6 +1826,9 @@ func (a *Account) GetOpenAIProtocolAPIKey() string {
 		return ""
 	}
 	if a.IsCNProvider() {
+		if a.IsKimiOAuth() {
+			return a.GetKimiAccessToken()
+		}
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}

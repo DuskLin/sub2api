@@ -32,7 +32,7 @@ func TestIsHeaderOverrideEligible(t *testing.T) {
 		{"deepseek apikey", PlatformDeepseek, AccountTypeAPIKey, true},
 		{"anthropic oauth", PlatformAnthropic, AccountTypeOAuth, false},
 		{"openai oauth", PlatformOpenAI, AccountTypeOAuth, false},
-		{"kimi oauth", PlatformKimi, AccountTypeOAuth, false},
+		{"kimi oauth", PlatformKimi, AccountTypeOAuth, true},
 		{"zhipu oauth", PlatformZhipu, AccountTypeOAuth, false},
 		{"deepseek oauth", PlatformDeepseek, AccountTypeOAuth, false},
 		{"gemini apikey", PlatformGemini, AccountTypeAPIKey, false},
@@ -162,6 +162,23 @@ func TestApplyHeaderOverrides(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, count)
+}
+
+func TestKimiOAuthHeaderOverridesCannotReplaceCodeCLIIdentity(t *testing.T) {
+	acc := headerOverrideTestAccount(PlatformKimi, AccountTypeOAuth, map[string]any{
+		"device_id":                  "device-kimi-ua",
+		credKeyHeaderOverrideEnabled: true,
+		credKeyHeaderOverrides: map[string]any{
+			"user-agent":     "codex-cli/spoof",
+			"x-msh-platform": "not-kimi",
+		},
+	})
+	h := http.Header{}
+	h.Set("User-Agent", "from-client")
+	acc.ApplyHeaderOverrides(h)
+	acc.SealKimiOAuthUpstreamHeaders(h)
+	require.Equal(t, KimiCodeCLIUserAgent, h.Get("User-Agent"))
+	require.Equal(t, KimiCodeCLIPlatform, h.Get("X-Msh-Platform"))
 }
 
 func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {

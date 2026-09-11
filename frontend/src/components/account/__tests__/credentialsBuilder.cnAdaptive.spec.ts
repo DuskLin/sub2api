@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls } from '../credentialsBuilder'
+import { applyKimiOAuthRouting, cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls, defaultKimiOAuthAdaptiveBaseUrls } from '../credentialsBuilder'
 
 describe('cnSupportsNativeResponses', () => {
   it('is true for DeepSeek, Kimi, and MiniMax', () => {
@@ -23,6 +23,11 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       chat_completions: 'https://api.kimi.com/coding/v1',
       anthropic: 'https://api.kimi.com/coding',
       responses: 'https://api.kimi.com/coding/v1'
+    })
+    expect(defaultKimiOAuthAdaptiveBaseUrls('global')).toEqual({
+      chat_completions: 'https://api.kimi.ai/coding/v1',
+      anthropic: 'https://api.kimi.ai/coding',
+      responses: 'https://api.kimi.ai/coding/v1'
     })
   })
 
@@ -55,5 +60,53 @@ describe('defaultCNAdaptiveBaseUrls', () => {
     }
     expect(defaultCNAdaptiveBaseUrls('minimax', 'payg')).toEqual(expected)
     expect(defaultCNAdaptiveBaseUrls('minimax', 'coding')).toEqual(expected)
+  })
+})
+
+describe('applyKimiOAuthRouting', () => {
+  it('writes adaptive endpoints and keeps coding mode', () => {
+    const credentials: Record<string, unknown> = {}
+    applyKimiOAuthRouting(
+      credentials,
+      'adaptive',
+      'global',
+      {
+        chat_completions: 'https://relay.example.com/v1',
+        anthropic: '',
+        responses: 'https://relay.example.com/responses'
+      },
+      ''
+    )
+    expect(credentials).toMatchObject({
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://relay.example.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://relay.example.com/v1',
+        anthropic: 'https://api.kimi.ai/coding',
+        responses: 'https://relay.example.com/responses'
+      }
+    })
+  })
+
+  it('writes a single legacy endpoint and drops api_base_urls', () => {
+    const credentials: Record<string, unknown> = {
+      api_base_urls: { chat_completions: 'https://api.kimi.com/coding/v1' }
+    }
+    applyKimiOAuthRouting(
+      credentials,
+      'anthropic',
+      'mainland-cn',
+      {
+        chat_completions: '',
+        anthropic: '',
+        responses: ''
+      },
+      'https://relay.example.com/anthropic'
+    )
+    expect(credentials.account_mode).toBe('coding')
+    expect(credentials.api_protocol).toBe('anthropic')
+    expect(credentials.base_url).toBe('https://relay.example.com/anthropic')
+    expect(credentials).not.toHaveProperty('api_base_urls')
   })
 })

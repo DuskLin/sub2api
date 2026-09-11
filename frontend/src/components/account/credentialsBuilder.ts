@@ -27,7 +27,7 @@ export function applyAntigravityProjectID(
   }
 }
 
-// ========== 请求头覆写（API-key 平台 + grok 的 api_key/oauth 账号） ==========
+// ========== 请求头覆写（API-key 平台 + grok/kimi 的 api_key/oauth 账号） ==========
 
 export const HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY = 'header_override_enabled'
 export const HEADER_OVERRIDES_CREDENTIAL_KEY = 'header_overrides'
@@ -42,14 +42,13 @@ export function isHeaderOverrideCapable(platform: string, type: string): boolean
   if (
     platform === 'anthropic' ||
     platform === 'openai' ||
-    platform === 'kimi' ||
     platform === 'zhipu' ||
     platform === 'deepseek' ||
     platform === 'minimax'
   ) {
     return type === 'apikey'
   }
-  if (platform === 'grok') {
+  if (platform === 'grok' || platform === 'kimi') {
     return type === 'apikey' || type === 'oauth'
   }
   return false
@@ -289,7 +288,10 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'payg', protocol: 'responses', label: 'Moonshot Responses', url: 'https://api.moonshot.cn/v1' },
     { mode: 'coding', protocol: 'chat_completions', label: 'Kimi For Coding', url: 'https://api.kimi.com/coding/v1' },
     { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' },
-    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' }
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Kimi Code Global', url: 'https://api.kimi.ai/coding/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Code Global Anthropic', url: 'https://api.kimi.ai/coding' },
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Code Global Responses', url: 'https://api.kimi.ai/coding/v1' }
   ],
   zhipu: [
     { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
@@ -365,6 +367,50 @@ export function defaultCNAdaptiveBaseUrls(
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
     responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
+}
+
+export type KimiOAuthRegion = 'mainland-cn' | 'global'
+
+export function defaultKimiOAuthAdaptiveBaseUrls(
+  region: KimiOAuthRegion
+): Record<CnNativeApiProtocol, string> {
+  if (region === 'global') {
+    return {
+      chat_completions: 'https://api.kimi.ai/coding/v1',
+      anthropic: 'https://api.kimi.ai/coding',
+      responses: 'https://api.kimi.ai/coding/v1'
+    }
+  }
+  return defaultCNAdaptiveBaseUrls('kimi', 'coding')
+}
+
+function kimiOAuthNativeProtocol(protocol: CnApiProtocol): CnNativeApiProtocol {
+  return protocol === 'anthropic' || protocol === 'responses' ? protocol : 'chat_completions'
+}
+
+/** 把 Kimi Code OAuth 的协议与转发端点写入 credentials（账号类型固定 coding）。 */
+export function applyKimiOAuthRouting(
+  credentials: Record<string, unknown>,
+  protocol: CnApiProtocol,
+  region: KimiOAuthRegion,
+  adaptiveBaseUrls: Record<CnNativeApiProtocol, string>,
+  legacyBaseUrl: string
+): void {
+  credentials.account_mode = 'coding'
+  credentials.api_protocol = protocol
+  const defaults = defaultKimiOAuthAdaptiveBaseUrls(region)
+  if (protocol === 'adaptive') {
+    const protocolBaseUrls: Record<string, string> = {
+      chat_completions: (adaptiveBaseUrls.chat_completions || defaults.chat_completions).trim(),
+      anthropic: (adaptiveBaseUrls.anthropic || defaults.anthropic).trim(),
+      responses: (adaptiveBaseUrls.responses || defaults.responses).trim()
+    }
+    credentials.api_base_urls = protocolBaseUrls
+    credentials.base_url = protocolBaseUrls.chat_completions
+    return
+  }
+  delete credentials.api_base_urls
+  credentials.base_url = legacyBaseUrl.trim() || defaults[kimiOAuthNativeProtocol(protocol)]
 }
 
 // ===== 国产供应商用量单元格可见性（单一事实源） =====

@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -71,11 +72,12 @@ const (
 // 国产 OpenAI 兼容供应商各模式的默认 base_url。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
-	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
-	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
-	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
-	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultKimiPayGBaseURL         = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL       = "https://api.kimi.com/coding/v1"
+	DefaultKimiGlobalCodingBaseURL = "https://api.kimi.ai/coding/v1"
+	DefaultZhipuPayGBaseURL        = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL      = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL         = "https://api.deepseek.com"
 	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
 	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
 )
@@ -83,12 +85,41 @@ const (
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
-	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	DefaultKimiPayGAnthropicBaseURL         = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL       = "https://api.kimi.com/coding"
+	DefaultKimiGlobalCodingAnthropicBaseURL = "https://api.kimi.ai/coding"
+	DefaultZhipuAnthropicBaseURL            = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL         = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL          = "https://api.minimaxi.com/anthropic"
 )
+
+// Kimi Code OAuth（RFC 8628 device-code）常量，对齐 Moonshot kimi-code 客户端。
+const (
+	KimiCodeOAuthClientID      = "17e5f671-d194-4dfb-9706-5516cb48c098"
+	KimiCodeCLIVersion         = "0.42.0"
+	KimiCodeCLIPlatform        = "kimi_code_cli"
+	KimiCodeCLIUserAgent       = "kimi-code-cli/" + KimiCodeCLIVersion
+	DefaultKimiOAuthHostCN     = "https://auth.kimi.com"
+	DefaultKimiOAuthHostGlobal = "https://auth.kimi.ai"
+	KimiRegionMainlandCN       = "mainland-cn"
+	KimiRegionGlobal           = "global"
+)
+
+// NormalizeKimiRegion 将区域输入归一为 mainland-cn / global。
+func NormalizeKimiRegion(region string) string {
+	if strings.EqualFold(strings.TrimSpace(region), KimiRegionGlobal) {
+		return KimiRegionGlobal
+	}
+	return KimiRegionMainlandCN
+}
+
+// KimiRegionEndpoints 返回指定区域的 OAuth host 与 Coding Plan 默认端点。
+func KimiRegionEndpoints(region string) (oauthHost, codingBase, anthropicBase string) {
+	if NormalizeKimiRegion(region) == KimiRegionGlobal {
+		return DefaultKimiOAuthHostGlobal, DefaultKimiGlobalCodingBaseURL, DefaultKimiGlobalCodingAnthropicBaseURL
+	}
+	return DefaultKimiOAuthHostCN, DefaultKimiCodingBaseURL, DefaultKimiCodingAnthropicBaseURL
+}
 
 // IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/minimax）。
 func IsCNProvider(platform string) bool {

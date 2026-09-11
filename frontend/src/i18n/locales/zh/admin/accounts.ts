@@ -366,6 +366,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        kimiOauth: 'Kimi Code OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -1283,6 +1284,38 @@ export default {
           },
           oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
+        kimi: {
+          title: 'Kimi Code 授权',
+          followSteps: '使用 Kimi Code OAuth（设备码）登录，将创建 Coding Plan 账号。',
+          deviceAuth: '设备码登录',
+          deviceDesc: '生成用户码后打开验证链接，完成授权后会自动创建账号。',
+          startDeviceAuth: '开始 Kimi Code 登录',
+          waiting: '等待授权中...',
+          userCode: '用户码',
+          openVerification: '打开验证页面',
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '粘贴已有的 Kimi Code refresh token，支持每行一个。',
+          refreshTokenPlaceholder: '粘贴 Kimi Code refresh token...\n支持多个，每行一个',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          failedToStart: '启动 Kimi Code 登录失败',
+          failedToPoll: '轮询 Kimi Code 登录失败',
+          failedToValidateRT: '验证 Kimi Code refresh token 失败',
+          denied: 'Kimi Code 授权被拒绝',
+          expired: 'Kimi Code 登录已过期，请重新开始。',
+          region: '区域',
+          regionMainland: '中国大陆',
+          regionGlobal: '国际',
+          regionHint: '大陆使用 auth.kimi.com / api.kimi.com；国际使用 auth.kimi.ai / api.kimi.ai。',
+          regionLocked: '区域绑定 OAuth 登录域名，更换区域请重新授权。下方转发端点仍可自定义。',
+          errors: {
+            KIMI_OAUTH_SESSION_NOT_FOUND: 'Kimi Code 登录会话已过期，请重新开始。',
+            KIMI_OAUTH_UNAUTHORIZED: 'Kimi Code refresh token 无效或已被撤销。',
+            KIMI_OAUTH_UNSUPPORTED_HOST: '不支持的 Kimi Code OAuth 主机。',
+            KIMI_OAUTH_PROXY_NOT_FOUND: '找不到所选代理。'
+          }
+        },
         // Gemini specific
         gemini: {
           title: 'Gemini 账户授权',
@@ -1509,6 +1542,7 @@ export default {
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       grokAccount: 'Grok 账号',
+      kimiAccount: 'Kimi 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

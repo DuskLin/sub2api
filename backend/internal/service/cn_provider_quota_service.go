@@ -133,7 +133,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan account")
 	}
 
-	apiKey := strings.TrimSpace(account.GetCNAPIKey())
+	apiKey := strings.TrimSpace(account.GetCNAuthToken())
 	if apiKey == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_APIKEY", "account api_key is empty")
 	}
@@ -180,6 +180,9 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Accept", "application/json")
+	if account.IsKimiOAuth() {
+		account.ApplyKimiCodeIdentityHeaders(req.Header)
+	}
 	if provider == PlatformZhipu || provider == PlatformMiniMax {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept-Language", "en-US,en")
@@ -192,6 +195,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	}
 	// 探测与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
 	account.ApplyHeaderOverrides(req.Header)
+	account.SealKimiOAuthUpstreamHeaders(req.Header)
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
 	if err != nil {
@@ -357,11 +361,7 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 				return true
 			}
 			limit, _ := cnParseF64(detail.Get("limit").Value())
-			remaining, _ := cnParseF64(detail.Get("remaining").Value())
-			used := limit - remaining
-			if used < 0 {
-				used = 0
-			}
+			used := cnUsageUsed(detail, limit)
 			var util float64
 			if limit > 0 {
 				util = used / limit * 100
@@ -377,11 +377,7 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 
 	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
 		limit, _ := cnParseF64(usage.Get("limit").Value())
-		remaining, _ := cnParseF64(usage.Get("remaining").Value())
-		used := limit - remaining
-		if used < 0 {
-			used = 0
-		}
+		used := cnUsageUsed(usage, limit)
 		var util float64
 		if limit > 0 {
 			util = used / limit * 100
@@ -620,6 +616,21 @@ func cnQuotaExtraUpdates(provider string, tiers []CNQuotaTier, now time.Time) ma
 }
 
 // cnParseF64 把 JSON 数值或字符串解析为 float64（兼容 "100" 与 100）。
+func cnUsageUsed(detail gjson.Result, limit float64) float64 {
+	if used, ok := cnParseF64(detail.Get("used").Value()); ok {
+		if used < 0 {
+			return 0
+		}
+		return used
+	}
+	remaining, _ := cnParseF64(detail.Get("remaining").Value())
+	used := limit - remaining
+	if used < 0 {
+		return 0
+	}
+	return used
+}
+
 func cnParseF64(raw any) (float64, bool) {
 	switch v := raw.(type) {
 	case float64:

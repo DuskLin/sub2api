@@ -26,6 +26,21 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <!-- Kimi OAuth: region is bound to the login host; protocol/endpoints are official defaults. -->
+      <div v-if="isKimiOAuthAccount" class="space-y-4" data-testid="kimi-oauth-routing">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.oauth.kimi.region') }}</label>
+          <p class="mt-1 text-sm text-gray-800 dark:text-gray-200">
+            {{
+              editKimiOAuthRegion === 'global'
+                ? t('admin.accounts.oauth.kimi.regionGlobal')
+                : t('admin.accounts.oauth.kimi.regionMainland')
+            }}
+          </p>
+          <p class="input-hint">{{ t('admin.accounts.oauth.kimi.regionLocked') }}</p>
+        </div>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -675,10 +690,11 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok/Kimi OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'grok' || account.platform === 'kimi') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-restriction"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -3012,6 +3028,7 @@ import {
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isCNProviderPlatform,
+  type KimiOAuthRegion,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   type CnAccountMode,
@@ -3124,6 +3141,11 @@ const editApiKey = ref('')
 const isCNApiKeyAccount = computed(
   () => props.account?.type === 'apikey' && isCNProviderPlatform(props.account.platform)
 )
+const isKimiOAuthAccount = computed(
+  () => props.account?.platform === 'kimi' && props.account?.type === 'oauth'
+)
+const editKimiOAuthRegion = ref<KimiOAuthRegion>('mainland-cn')
+const isCNRoutingEditable = computed(() => isCNApiKeyAccount.value)
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<CnProviderPlatform>(() => {
@@ -3180,7 +3202,7 @@ const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol;
   return opts
 })
 watch(editApiProtocol, (protocol, previousProtocol) => {
-  if (!isCNApiKeyAccount.value || syncingForm.value) return
+  if (!isCNRoutingEditable.value || syncingForm.value) return
   if (protocol === 'adaptive') {
     const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, editAccountMode.value)
     for (const item of editAdaptiveProtocolOptions.value) {
@@ -4243,10 +4265,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // Load model mappings for OpenAI/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
+    // Load model mappings for OpenAI/Grok/Kimi OAuth accounts
+    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'kimi') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+      if (newAccount.platform === 'kimi') {
+        editAccountMode.value = 'coding'
+        editKimiOAuthRegion.value = oauthCredentials.region === 'global' ? 'global' : 'mainland-cn'
+      }
     } else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
@@ -5147,8 +5173,8 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
+    // OpenAI/Grok/Kimi OAuth: persist model mapping to credentials
+    if ((props.account.platform === 'openai' || props.account.platform === 'grok' || props.account.platform === 'kimi') && props.account.type === 'oauth') {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
@@ -5163,6 +5189,16 @@ const handleSubmit = async () => {
         } else {
           delete newCredentials.model_mapping
         }
+      }
+      if (props.account.platform === 'kimi') {
+        if (headerOverrideEnabled.value) {
+          const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
+          if (headerError) {
+            appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
+            return
+          }
+        }
+        applyHeaderOverride(newCredentials, headerOverrideEnabled.value, headerOverrideRows.value, 'edit')
       }
 
       updatePayload.credentials = newCredentials

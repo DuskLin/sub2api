@@ -163,6 +163,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        kimiOauth: 'Kimi Code OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -1218,6 +1219,38 @@ export default {
           },
           oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
+        kimi: {
+          title: 'Kimi Code Authorization',
+          followSteps: 'Sign in with Kimi Code OAuth (device code). This creates a Coding Plan account.',
+          deviceAuth: 'Device code login',
+          deviceDesc: 'Generate a user code, open the verification URL, then wait until authorization completes.',
+          startDeviceAuth: 'Start Kimi Code login',
+          waiting: 'Waiting for authorization...',
+          userCode: 'User code',
+          openVerification: 'Open verification page',
+          refreshTokenAuth: 'Manual RT input',
+          refreshTokenDesc: 'Paste an existing Kimi Code refresh token. One token per line is supported.',
+          refreshTokenPlaceholder: 'Paste your Kimi Code refresh token...\nOne per line',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          pleaseEnterRefreshToken: 'Please enter a refresh token',
+          failedToStart: 'Failed to start Kimi Code login',
+          failedToPoll: 'Failed to poll Kimi Code login',
+          failedToValidateRT: 'Failed to validate Kimi Code refresh token',
+          denied: 'Kimi Code authorization was denied',
+          expired: 'Kimi Code login expired. Please start again.',
+          region: 'Region',
+          regionMainland: 'Mainland China',
+          regionGlobal: 'Global',
+          regionHint: 'Mainland uses auth.kimi.com / api.kimi.com. Global uses auth.kimi.ai / api.kimi.ai.',
+          regionLocked: 'Region is bound to the OAuth login host. Re-authorize to switch regions. Endpoints below can still be customized.',
+          errors: {
+            KIMI_OAUTH_SESSION_NOT_FOUND: 'The Kimi Code login session expired. Please start again.',
+            KIMI_OAUTH_UNAUTHORIZED: 'Kimi Code refresh token is invalid or revoked.',
+            KIMI_OAUTH_UNSUPPORTED_HOST: 'Unsupported Kimi Code OAuth host.',
+            KIMI_OAUTH_PROXY_NOT_FOUND: 'The selected proxy was not found.'
+          }
+        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -1449,6 +1482,7 @@ export default {
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       grokAccount: 'Grok Account',
+      kimiAccount: 'Kimi Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal

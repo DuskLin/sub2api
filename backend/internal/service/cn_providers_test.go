@@ -107,6 +107,18 @@ func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
 }
 
+func TestParseKimiUsageTiers_UsedField(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"limits": [{"detail": {"limit": "100", "used": "40", "resetTime": "2026-08-14T15:00:00Z"}}],
+		"usage": {"limit": "1000", "used": "250", "resetTime": "2026-08-18T00:00:00Z"}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.InDelta(t, 40.0, tiers[0].UsedPercent, 1e-9)
+	require.InDelta(t, 25.0, tiers[1].UsedPercent, 1e-9)
+}
+
 // TestParseZhipuTokenTiers_UnitClassification 显式 unit（3=5h / 6=weekly）优先分类，
 // 不能被 reset 时间排序覆盖（周期末尾周窗口会更早重置）。
 func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
@@ -227,6 +239,7 @@ func TestKimiQuotaURL(t *testing.T) {
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/v1/"))
+	require.Equal(t, "https://api.kimi.ai/coding/v1/usages", kimiQuotaURL("https://api.kimi.ai/coding/v1"))
 }
 
 func TestMiniMaxQuotaURL(t *testing.T) {
@@ -528,6 +541,19 @@ func TestGetOpenAIProtocolAPIKey_CNProviders(t *testing.T) {
 		Credentials: map[string]any{"api_key": "sk-leak"},
 	}
 	require.Equal(t, "", notAPIKey.GetOpenAIProtocolAPIKey())
+
+	kimiOAuth := &Account{
+		Platform: PlatformKimi,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "kimi-at",
+			"account_mode":  AccountModeCoding,
+			"region":        KimiRegionGlobal,
+		},
+	}
+	require.Equal(t, "kimi-at", kimiOAuth.GetOpenAIProtocolAPIKey())
+	require.Equal(t, "kimi-at", kimiOAuth.GetCNAuthToken())
+	require.Equal(t, PlatformKimi, kimiOAuth.GetCodingPlanProvider())
 
 	// openai 原生账号行为不变
 	openai := &Account{

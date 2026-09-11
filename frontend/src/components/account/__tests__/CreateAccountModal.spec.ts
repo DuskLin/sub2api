@@ -490,6 +490,27 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('shows model restriction for Kimi OAuth accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kimi')
+    await selectButtonByText(wrapper, 'admin.accounts.types.kimiOauth')
+
+    expect(wrapper.find('[data-testid="oauth-model-restriction"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+  })
+
+  it('hides protocol endpoints and shows header override for Kimi OAuth accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kimi')
+    await selectButtonByText(wrapper, 'admin.accounts.types.kimiOauth')
+
+    expect(wrapper.find('[data-testid="kimi-oauth-routing"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-chat_completions"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.accounts.cnProviders.apiProtocol.title')
+    expect(wrapper.find('[data-testid="oauth-header-override"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+  })
+
   it('submits adaptive MiniMax protocol endpoints', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'MiniMax')

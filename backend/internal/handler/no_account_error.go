@@ -117,6 +117,14 @@ func classifyNoAccountError(
 	if displayModel == "" {
 		displayModel = routingModel
 	}
+	if mismatch := openAICompatibleModelPlatformMismatch(routingModel, displayModel, platform); mismatch != "" {
+		return noAccountErrorClassification{
+			Status:        http.StatusNotFound,
+			ErrType:       "model_not_found",
+			Message:       mismatch,
+			ModelNotFound: true,
+		}
+	}
 	if diag == nil || apiKey == nil || apiKey.GroupID == nil || routingModel == "" {
 		return fallback
 	}
@@ -177,12 +185,71 @@ func classifyOpenAICompatibleNoAccountErrorFromGin(
 }
 
 func openAICompatibleSelectionErrorForLog(err error, platform string) error {
-	if err == nil || platform != service.PlatformGrok {
+	if err == nil {
 		return err
 	}
-	message := strings.ReplaceAll(err.Error(), "OpenAI accounts", "Grok accounts")
+	noun := openAICompatibleAccountsNoun(platform)
+	if noun == "OpenAI accounts" {
+		return err
+	}
+	message := strings.ReplaceAll(err.Error(), "OpenAI accounts", noun)
 	if message == err.Error() {
 		return err
 	}
 	return fmt.Errorf("%s", message)
+}
+
+func openAICompatibleAccountsNoun(platform string) string {
+	return openAICompatiblePlatformDisplayName(platform) + " accounts"
+}
+
+func openAICompatiblePlatformDisplayName(platform string) string {
+	switch service.NormalizeOpenAICompatiblePlatform(platform) {
+	case service.PlatformGrok:
+		return "Grok"
+	case service.PlatformKimi:
+		return "Kimi"
+	case service.PlatformZhipu:
+		return "Zhipu"
+	case service.PlatformDeepseek:
+		return "DeepSeek"
+	case service.PlatformMiniMax:
+		return "MiniMax"
+	default:
+		return "OpenAI"
+	}
+}
+
+func openAICompatibleNativePlatform(platform string) (string, bool) {
+	switch platform {
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax:
+		return platform, true
+	default:
+		return "", false
+	}
+}
+
+// openAICompatibleModelPlatformMismatch reports a 404 when the requested model
+// belongs to a different OpenAI-compatible provider than the API key's group.
+// Example: kimi-k3 against an OpenAI group looks for OpenAI accounts, then
+// OpenAI OAuth rejects the foreign kimi-* family (#3662).
+func openAICompatibleModelPlatformMismatch(routingModel, displayModel, requestPlatform string) string {
+	detected, ok := service.DetectModelPlatform(routingModel)
+	if !ok {
+		return ""
+	}
+	detectedNative, detectedOK := openAICompatibleNativePlatform(detected)
+	requestNative, requestOK := openAICompatibleNativePlatform(service.NormalizeOpenAICompatiblePlatform(requestPlatform))
+	if !detectedOK || !requestOK || detectedNative == requestNative {
+		return ""
+	}
+	if strings.TrimSpace(displayModel) == "" {
+		displayModel = routingModel
+	}
+	return fmt.Sprintf(
+		"Model %q requires %s accounts, but this API key belongs to a %s group",
+		displayModel,
+		openAICompatiblePlatformDisplayName(detectedNative),
+		openAICompatiblePlatformDisplayName(requestNative),
+	)
 }

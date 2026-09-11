@@ -466,8 +466,96 @@
         </div>
       </div>
 
+      <!-- Account Type Selection (Kimi) -->
+      <div v-if="form.platform === 'kimi'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            @click="selectKimiAccountCategory('oauth-based')"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/20'
+                : 'border-gray-200 hover:border-pink-300 dark:border-dark-600 dark:hover:border-pink-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'oauth-based'
+                  ? 'bg-pink-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <PlatformIcon platform="kimi" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.kimiOauth') }}</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="selectKimiAccountCategory('apikey')"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.responsesApi') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="form.platform === 'kimi' && accountCategory === 'oauth-based'" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.oauth.kimi.region') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            @click="kimiOAuthRegion = 'mainland-cn'"
+            :class="[
+              'rounded-lg border-2 p-3 text-left text-sm',
+              kimiOAuthRegion === 'mainland-cn'
+                ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/20'
+                : 'border-gray-200 dark:border-dark-600'
+            ]"
+          >
+            {{ t('admin.accounts.oauth.kimi.regionMainland') }}
+          </button>
+          <button
+            type="button"
+            @click="kimiOAuthRegion = 'global'"
+            :class="[
+              'rounded-lg border-2 p-3 text-left text-sm',
+              kimiOAuthRegion === 'global'
+                ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/20'
+                : 'border-gray-200 dark:border-dark-600'
+            ]"
+          >
+            {{ t('admin.accounts.oauth.kimi.regionGlobal') }}
+          </button>
+        </div>
+        <p class="input-hint">{{ t('admin.accounts.oauth.kimi.regionHint') }}</p>
+      </div>
+
       <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
-      <div v-if="isCNPlatform">
+      <div v-if="isCNPlatform && !(form.platform === 'kimi' && accountCategory === 'oauth-based')">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
           <!-- Pay-as-you-go (token balance) -->
@@ -526,8 +614,8 @@
         </div>
       </div>
 
-      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek) -->
-      <div v-if="isCNPlatform" class="mt-4">
+      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek API Key) -->
+      <div v-if="isCNPlatform && !isKimiOAuthCreateFlow" class="mt-4">
         <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <button
@@ -2182,10 +2270,11 @@
         </div>
       </div>
 
-      <!-- Grok OAuth Header Override (OAuth 类型没有 apikey 容器，需要独立区域) -->
+      <!-- Grok / Kimi OAuth Header Override (OAuth 类型没有 apikey 容器，需要独立区域) -->
       <div
-        v-if="form.platform === 'grok' && isOAuthFlow"
+        v-if="(form.platform === 'grok' || form.platform === 'kimi') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-header-override"
       >
         <div class="mb-3 flex items-center justify-between">
           <div>
@@ -2226,10 +2315,11 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok/Kimi OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'kimi') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-restriction"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -3465,7 +3555,21 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
+      <KimiDeviceCodeFlow
+        v-if="form.platform === 'kimi'"
+        :region="kimiOAuthRegion"
+        :proxy-id="form.proxy_id"
+        :loading="kimiOAuth.loading.value"
+        :polling="kimiOAuth.polling.value"
+        :error="kimiOAuth.error.value"
+        :user-code="kimiOAuth.userCode.value"
+        :verification-uri="kimiOAuth.verificationUri.value"
+        :verification-uri-complete="kimiOAuth.verificationUriComplete.value"
+        @start="handleKimiStartDeviceAuth"
+        @refresh-token="handleKimiRefreshToken"
+      />
       <OAuthAuthorizationFlow
+        v-else
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -3548,7 +3652,7 @@
           {{ t('common.back') }}
         </button>
         <button
-          v-if="isManualInputMethod"
+          v-if="isManualInputMethod && form.platform !== 'kimi'"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -3839,6 +3943,9 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useKimiOAuth } from '@/composables/useKimiOAuth'
+import KimiDeviceCodeFlow from '@/components/account/KimiDeviceCodeFlow.vue'
+import type { KimiOAuthRegion } from '@/api/admin/kimi'
 import type {
   Proxy,
   AdminGroup,
@@ -3872,9 +3979,11 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyKimiOAuthRouting,
   cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
+  defaultKimiOAuthAdaptiveBaseUrls,
   isCNProviderPlatform,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
@@ -3927,6 +4036,7 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  if (form.platform === 'kimi') return t('admin.accounts.oauth.kimi.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -4015,6 +4125,8 @@ const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const grokOAuth = useGrokOAuth() // For Grok OAuth
+const kimiOAuth = useKimiOAuth()
+const kimiOAuthRegion = ref<KimiOAuthRegion>('mainland-cn')
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -4088,6 +4200,9 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   responses: ''
 })
 const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
+const isKimiOAuthCreateFlow = computed(
+  () => form.platform === 'kimi' && accountCategory.value === 'oauth-based'
+)
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<CnProviderPlatform>(() => {
@@ -4151,6 +4266,23 @@ const cnAccentIconClass = computed(() => {
 })
 // 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
 // 协议回落 adaptive，并把 base url 重置为该平台默认端点。
+watch(kimiOAuthRegion, (region) => {
+  if (form.platform !== 'kimi' || accountCategory.value !== 'oauth-based') return
+  adaptiveBaseUrls.value = defaultKimiOAuthAdaptiveBaseUrls(region)
+  apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
+})
+
+function selectKimiAccountCategory(category: 'oauth-based' | 'apikey') {
+  accountCategory.value = category
+  form.type = category === 'oauth-based' ? 'oauth' : 'apikey'
+  if (category === 'oauth-based') {
+    accountMode.value = 'coding'
+    apiProtocol.value = 'adaptive'
+    adaptiveBaseUrls.value = defaultKimiOAuthAdaptiveBaseUrls(kimiOAuthRegion.value)
+    apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
+  }
+}
+
 function selectCNPlatform(platform: CnProviderPlatform) {
   form.platform = platform
   form.type = 'apikey'
@@ -4164,7 +4296,7 @@ function selectCNPlatform(platform: CnProviderPlatform) {
 }
 // 账号类型 / 协议变更时同步默认 base url。
 watch(accountMode, (mode, previousMode) => {
-  if (!isCNPlatform.value) return
+  if (!isCNPlatform.value || isKimiOAuthCreateFlow.value) return
   if (apiProtocol.value === 'adaptive') {
     const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
     const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
@@ -4179,9 +4311,9 @@ watch(accountMode, (mode, previousMode) => {
   apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, mode, apiProtocol.value)
 })
 watch(apiProtocol, (protocol) => {
-  if (!isCNPlatform.value) return
+  if (!isCNPlatform.value || isKimiOAuthCreateFlow.value) return
+  const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
   if (protocol === 'adaptive') {
-    const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
     for (const item of cnAdaptiveProtocolOptions.value) {
       if (!adaptiveBaseUrls.value[item.value]) adaptiveBaseUrls.value[item.value] = defaults[item.value]
     }
@@ -4793,6 +4925,8 @@ watch(
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
     grokOAuth.resetState()
+    kimiOAuth.resetState()
+    kimiOAuthRegion.value = 'mainland-cn'
   }
 )
 
@@ -5271,6 +5405,7 @@ const resetForm = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  kimiOAuth.resetState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
   upstreamModelsPreviewed.value = false
@@ -5746,6 +5881,7 @@ const goBackToBasicInfo = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  kimiOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -5765,6 +5901,44 @@ const handleGenerateUrl = async () => {
     await grokOAuth.generateAuthUrl(form.proxy_id)
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
+  }
+}
+
+const createKimiOAuthAccount = async (tokenInfo: NonNullable<Awaited<ReturnType<typeof kimiOAuth.validateRefreshToken>>>) => {
+  if (!tokenInfo) return
+  if (headerOverrideEnabled.value) {
+    const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
+    if (headerError) {
+      appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
+      return
+    }
+  }
+  const credentials = kimiOAuth.buildCredentials(tokenInfo)
+  const defaults = defaultKimiOAuthAdaptiveBaseUrls(kimiOAuthRegion.value)
+  applyKimiOAuthRouting(credentials, 'adaptive', kimiOAuthRegion.value, defaults, defaults.chat_completions)
+  applyHeaderOverride(credentials, headerOverrideEnabled.value, headerOverrideRows.value, 'create')
+  const extra = kimiOAuth.buildExtraInfo(tokenInfo)
+  await createAccountAndFinish('kimi', 'oauth', credentials, extra)
+}
+
+const handleKimiStartDeviceAuth = async () => {
+  const started = await kimiOAuth.startDeviceAuthorization(kimiOAuthRegion.value, form.proxy_id)
+  if (!started) return
+  const tokenInfo = await kimiOAuth.pollUntilComplete()
+  if (!tokenInfo) return
+  await createKimiOAuthAccount(tokenInfo)
+}
+
+const handleKimiRefreshToken = async (refreshToken: string) => {
+  const tokens = refreshToken.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (tokens.length === 0) {
+    kimiOAuth.error.value = t('admin.accounts.oauth.kimi.pleaseEnterRefreshToken')
+    return
+  }
+  for (const token of tokens) {
+    const tokenInfo = await kimiOAuth.validateRefreshToken(token, form.proxy_id, kimiOAuthRegion.value)
+    if (!tokenInfo) return
+    await createKimiOAuthAccount(tokenInfo)
   }
 }
 
@@ -5838,8 +6012,8 @@ const createAccountAndFinish = async (
       delete credentials.compact_model_mapping
     }
   }
-  if (platform === 'grok') {
-    if (!credentials.base_url) {
+  if (platform === 'grok' || platform === 'kimi') {
+    if (platform === 'grok' && !credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)

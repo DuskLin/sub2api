@@ -1345,36 +1345,59 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 
+func (s *OpenAIGatewayService) kimiOAuthResponsesTargetURL(account *Account) (string, error) {
+	baseURL := account.GetOpenAIBaseURL()
+	if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
+		baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+	}
+	if baseURL == "" {
+		return "", fmt.Errorf("kimi oauth responses base url is empty")
+	}
+	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return "", err
+	}
+	return buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL), nil
+}
+
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
-	switch account.Type {
-	case AccountTypeOAuth:
-		// OAuth accounts use ChatGPT internal API
-		targetURL = chatgptCodexURL
-	case AccountTypeSetupToken:
-		if account.IsOpenAIOAuthLike() {
+	if account.IsKimiOAuth() {
+		kimiURL, err := s.kimiOAuthResponsesTargetURL(account)
+		if err != nil {
+			return nil, err
+		}
+		targetURL = kimiURL
+	} else {
+		switch account.Type {
+		case AccountTypeOAuth:
+			// OpenAI OAuth / Setup Token 走 ChatGPT Codex；Kimi OAuth 已在上方单独分支。
 			targetURL = chatgptCodexURL
-		} else {
-			targetURL = openaiPlatformAPIURL
-		}
-	case AccountTypeAPIKey:
-		// API Key accounts use Platform API or custom base URL
-		baseURL := account.GetOpenAIBaseURL()
-		if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
-			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
-		}
-		if baseURL == "" {
-			targetURL = openaiPlatformAPIURL
-		} else {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, err
+		case AccountTypeSetupToken:
+			if account.IsOpenAIOAuthLike() {
+				targetURL = chatgptCodexURL
+			} else {
+				targetURL = openaiPlatformAPIURL
 			}
-			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+		case AccountTypeAPIKey:
+			// API Key accounts use Platform API or custom base URL
+			baseURL := account.GetOpenAIBaseURL()
+			if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
+				baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+			}
+			if baseURL == "" {
+				targetURL = openaiPlatformAPIURL
+			} else {
+				validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+				if err != nil {
+					return nil, err
+				}
+				targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+			}
+		default:
+			targetURL = openaiPlatformAPIURL
 		}
-	default:
-		targetURL = openaiPlatformAPIURL
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
@@ -1458,16 +1481,15 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Set("accept", "application/json")
 	}
 
-	// Apply custom User-Agent if configured
-	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
-		req.Header.Set("user-agent", customUA)
-	}
-
-	// 若开启 ForceCodexCLI，则强制将上游 User-Agent 伪装为规范 Codex 身份。
-	// 用于网关未透传/改写 User-Agent 时，仍能命中 Codex 侧识别逻辑。
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		req.Header.Set("user-agent", CodexCanonicalUserAgent())
+	// Apply custom User-Agent if configured. Kimi OAuth 身份在 Seal 阶段固定 CLI UA。
+	if !account.IsKimiOAuth() {
+		customUA := account.GetOpenAIUserAgent()
+		if customUA != "" {
+			req.Header.Set("user-agent", customUA)
+		}
+		if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+			req.Header.Set("user-agent", CodexCanonicalUserAgent())
+		}
 	}
 
 	// 账号 namespace 不改变客户端身份基数，但确保 scheduler failover 后不会把
@@ -1490,6 +1512,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
+	account.SealKimiOAuthUpstreamHeaders(req.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header)
 	// x-codex-beta-features：按真实 Codex 的会话级行为补注（在账号级覆写之后，
 	// 保证不被覆盖丢失）。

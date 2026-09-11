@@ -231,6 +231,28 @@ func TestAccountIsModelSupported(t *testing.T) {
 			requestedModel: "gemini-3-flash",
 			expected:       false,
 		},
+		{
+			name:     "kimi-k3 aliases official coding id k3",
+			platform: PlatformKimi,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"k3": "k3",
+				},
+			},
+			requestedModel: "kimi-k3",
+			expected:       true,
+		},
+		{
+			name:     "kimi-k3-256k aliases official coding id k3-256k",
+			platform: PlatformKimi,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"k3-256k": "k3-256k",
+				},
+			},
+			requestedModel: "kimi-k3-256k",
+			expected:       true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -244,6 +266,20 @@ func TestAccountIsModelSupported(t *testing.T) {
 				t.Errorf("IsModelSupported(%q) = %v, want %v", tt.requestedModel, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestKimiK3AliasMapsToOfficialCodingID(t *testing.T) {
+	account := &Account{
+		Platform: PlatformKimi,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"k3": "k3",
+			},
+		},
+	}
+	if got := account.GetMappedModel("kimi-k3"); got != "k3" {
+		t.Fatalf("GetMappedModel(kimi-k3) = %q, want k3", got)
 	}
 }
 

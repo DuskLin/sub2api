@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -54,6 +55,7 @@ type AccountHandler struct {
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
 	grokOAuthService        service.GrokOAuthTokenService
+	kimiOAuthService        service.KimiOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
 	accountTestService      *service.AccountTestService
@@ -101,6 +103,7 @@ func NewAccountHandler(
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
 		grokOAuthService:        grokOAuthService,
+		kimiOAuthService:        nil,
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
 		accountTestService:      accountTestService,
@@ -1472,6 +1475,24 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		newCredentials = service.MergeCredentials(account.Credentials, h.grokOAuthService.BuildAccountCredentials(tokenInfo))
 		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
 			newCredentials["base_url"] = baseURL
+		}
+	} else if account.IsKimiOAuth() {
+		if h.kimiOAuthService == nil {
+			return nil, "", fmt.Errorf("kimi oauth service is not configured")
+		}
+		tokenInfo, err := h.kimiOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to refresh Kimi credentials: %w", err)
+		}
+		newCredentials = service.MergeCredentials(account.Credentials, h.kimiOAuthService.BuildAccountCredentials(tokenInfo))
+		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
+			newCredentials["base_url"] = baseURL
+		}
+		if protocol := strings.TrimSpace(account.GetCredential("api_protocol")); protocol != "" {
+			newCredentials["api_protocol"] = protocol
+		}
+		if raw, ok := account.Credentials["api_base_urls"]; ok {
+			newCredentials["api_base_urls"] = raw
 		}
 	} else {
 		// Use Anthropic/Claude OAuth service to refresh token
@@ -2918,6 +2939,56 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				ID:          requestedModel,
 				Object:      "model",
 				OwnedBy:     "xai",
+				DisplayName: requestedModel,
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle Kimi accounts. OAuth is always Coding Plan; without this branch the
+	// generic OAuth fallback below advertises Claude models.
+	if account.Platform == service.PlatformKimi {
+		defaultModels := kimi.DefaultModels(account.IsKimiOAuth() || account.GetAccountMode() == service.AccountModeCoding)
+
+		hasExplicitMapping := false
+		switch rawMapping := account.Credentials["model_mapping"].(type) {
+		case map[string]any:
+			hasExplicitMapping = len(rawMapping) > 0
+		case map[string]string:
+			hasExplicitMapping = len(rawMapping) > 0
+		}
+		if !hasExplicitMapping {
+			response.Success(c, defaultModels)
+			return
+		}
+
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, defaultModels)
+			return
+		}
+
+		defaultByID := make(map[string]kimi.Model, len(defaultModels))
+		for _, model := range defaultModels {
+			defaultByID[model.ID] = model
+		}
+
+		requestedModels := make([]string, 0, len(mapping))
+		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []kimi.Model
+		for _, requestedModel := range requestedModels {
+			if defaultModel, found := defaultByID[requestedModel]; found {
+				models = append(models, defaultModel)
+				continue
+			}
+			models = append(models, kimi.Model{
+				ID:          requestedModel,
+				Type:        "model",
 				DisplayName: requestedModel,
 			})
 		}
