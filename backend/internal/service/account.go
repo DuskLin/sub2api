@@ -1360,12 +1360,21 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 }
 
 // UsesOpenAICodexProtocol reports ChatGPT/Codex inference routing
-// (chatgpt.com Host, session_id isolation, Codex UA). Only OpenAI OAuth /
-// SetupToken accounts use that protocol; Kimi/Grok OAuth share Type=oauth
-// but talk to their own upstreams. Treating them as Codex used to set
+// (chatgpt.com Host, session_id isolation, Codex UA).
+//
+// OpenAI OAuth and SetupToken use that protocol. Legacy accounts stored as
+// Type=oauth with an implicit/empty platform do too — many tests and older
+// rows omit Platform. Explicit non-OpenAI OAuth (Kimi, Grok, ...) talks to
+// each provider's own upstream; treating them as Codex used to set
 // Host: chatgpt.com on Kimi /v1/responses and get an nginx 404.
 func (a *Account) UsesOpenAICodexProtocol() bool {
-	return a.IsOpenAIOAuthLike()
+	if a == nil {
+		return false
+	}
+	if a.IsOpenAIOAuthLike() {
+		return true
+	}
+	return a.Type == AccountTypeOAuth && strings.TrimSpace(a.Platform) == ""
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
