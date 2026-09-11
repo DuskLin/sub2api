@@ -389,6 +389,9 @@ func (s *OpenAIGatewayService) buildOpenAIAuthenticationHeaders(ctx context.Cont
 		return agentHeaders, nil
 	}
 	headers.Set("Authorization", "Bearer "+token)
+	if credAccount != nil && credAccount.IsKimiOAuth() {
+		credAccount.ApplyKimiCodeIdentityHeaders(headers)
+	}
 	return headers, nil
 }
 

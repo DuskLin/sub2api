@@ -22,7 +22,9 @@
                     ? 'from-purple-500 to-purple-600'
                     : isGrok
                       ? 'from-zinc-700 to-zinc-900'
-                      : 'from-orange-500 to-orange-600'
+                      : isKimi
+                        ? 'from-pink-500 to-pink-600'
+                        : 'from-orange-500 to-orange-600'
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -41,7 +43,9 @@
                       ? t('admin.accounts.antigravityAccount')
                       : isGrok
                         ? t('admin.accounts.grokAccount')
-                        : t('admin.accounts.claudeCodeAccount')
+                        : isKimi
+                          ? t('admin.accounts.kimiAccount')
+                          : t('admin.accounts.claudeCodeAccount')
               }}
             </span>
           </div>
@@ -120,7 +124,21 @@
         </div>
       </div>
 
+      <KimiDeviceCodeFlow
+        v-if="isKimi"
+        :region="kimiOAuthRegion"
+        :proxy-id="account.proxy_id"
+        :loading="kimiOAuth.loading.value"
+        :polling="kimiOAuth.polling.value"
+        :error="kimiOAuth.error.value"
+        :user-code="kimiOAuth.userCode.value"
+        :verification-uri="kimiOAuth.verificationUri.value"
+        :verification-uri-complete="kimiOAuth.verificationUriComplete.value"
+        @start="handleKimiStartDeviceAuth"
+        @refresh-token="handleKimiRefreshToken"
+      />
       <OAuthAuthorizationFlow
+        v-else
         ref="oauthFlowRef"
         :add-method="addMethod"
         :auth-url="currentAuthUrl"
@@ -152,7 +170,7 @@
           {{ t('common.cancel') }}
         </button>
         <button
-          v-if="isManualInputMethod"
+          v-if="isManualInputMethod && !isKimi"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -203,6 +221,9 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useKimiOAuth } from '@/composables/useKimiOAuth'
+import KimiDeviceCodeFlow from '@/components/account/KimiDeviceCodeFlow.vue'
+import type { KimiOAuthRegion } from '@/api/admin/kimi'
 import type { Account } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -239,6 +260,11 @@ const openaiOAuth = useOpenAIOAuth()
 const geminiOAuth = useGeminiOAuth()
 const antigravityOAuth = useAntigravityOAuth()
 const grokOAuth = useGrokOAuth()
+const kimiOAuth = useKimiOAuth()
+const kimiOAuthRegion = computed<KimiOAuthRegion>(() => {
+  const creds = (props.account?.credentials || {}) as Record<string, unknown>
+  return creds.region === 'global' ? 'global' : 'mainland-cn'
+})
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -254,6 +280,7 @@ const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isGrok = computed(() => props.account?.platform === 'grok')
+const isKimi = computed(() => props.account?.platform === 'kimi')
 
 /**
  * Grok reauth default tab (password auth is hidden):
@@ -359,6 +386,7 @@ const resetState = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  kimiOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -747,5 +775,47 @@ const handleGrokValidateRefreshToken = async (refreshTokenInput: string) => {
   } finally {
     grokOAuth.loading.value = false
   }
+}
+
+const applyKimiReauthTokenInfo = async (tokenInfo: NonNullable<Awaited<ReturnType<typeof kimiOAuth.validateRefreshToken>>>) => {
+  if (!props.account || !tokenInfo) return
+  const credentials = {
+    ...((props.account.credentials || {}) as Record<string, unknown>),
+    ...kimiOAuth.buildCredentials(tokenInfo)
+  }
+  const extra = {
+    ...((props.account.extra || {}) as Record<string, unknown>),
+    ...kimiOAuth.buildExtraInfo(tokenInfo)
+  }
+  const updatedAccount = await adminAPI.accounts.update(props.account.id, {
+    type: 'oauth',
+    credentials,
+    extra
+  })
+  await adminAPI.accounts.clearError(props.account.id)
+  appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+  emit('reauthorized', updatedAccount)
+  handleClose()
+}
+
+const handleKimiStartDeviceAuth = async () => {
+  if (!props.account) return
+  const started = await kimiOAuth.startDeviceAuthorization(kimiOAuthRegion.value, props.account.proxy_id)
+  if (!started) return
+  const tokenInfo = await kimiOAuth.pollUntilComplete()
+  if (!tokenInfo) return
+  await applyKimiReauthTokenInfo(tokenInfo)
+}
+
+const handleKimiRefreshToken = async (refreshToken: string) => {
+  if (!props.account) return
+  const token = refreshToken.split('\n').map((line) => line.trim()).filter(Boolean)[0]
+  if (!token) {
+    kimiOAuth.error.value = t('admin.accounts.oauth.kimi.pleaseEnterRefreshToken')
+    return
+  }
+  const tokenInfo = await kimiOAuth.validateRefreshToken(token, props.account.proxy_id, kimiOAuthRegion.value)
+  if (!tokenInfo) return
+  await applyKimiReauthTokenInfo(tokenInfo)
 }
 </script>

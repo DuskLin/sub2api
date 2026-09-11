@@ -444,6 +444,7 @@ type OpenAIGatewayService struct {
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	grokTokenProvider     *GrokTokenProvider
+	kimiTokenProvider     *KimiTokenProvider
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
@@ -548,6 +549,7 @@ func NewOpenAIGatewayService(
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		grokTokenProvider:     grokTokenProvider,
+		kimiTokenProvider:     nil,
 		toolCorrector:         NewCodexToolCorrector(),
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
@@ -569,6 +571,13 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+func (s *OpenAIGatewayService) SetKimiTokenProvider(provider *KimiTokenProvider) {
+	if s == nil {
+		return
+	}
+	s.kimiTokenProvider = provider
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
@@ -1205,6 +1214,20 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 				return accessToken, "oauth", nil
 			}
 			accessToken := account.GetGrokAccessToken()
+			if accessToken == "" {
+				return "", "", errors.New("access_token not found in credentials")
+			}
+			return accessToken, "oauth", nil
+		}
+		if account.IsKimiOAuth() {
+			if s.kimiTokenProvider != nil {
+				accessToken, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
+				if err != nil {
+					return "", "", err
+				}
+				return accessToken, "oauth", nil
+			}
+			accessToken := account.GetKimiAccessToken()
 			if accessToken == "" {
 				return "", "", errors.New("access_token not found in credentials")
 			}

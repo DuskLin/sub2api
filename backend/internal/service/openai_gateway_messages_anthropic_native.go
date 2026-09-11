@@ -189,6 +189,9 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
 	setAnthropicAPIKeyAuthHeader(req.Header, account, apiKey, account.GetAnthropicProtocolBaseURL())
+	if account.IsKimiOAuth() {
+		account.ApplyKimiCodeIdentityHeaders(req.Header)
+	}
 
 	if getHeaderRaw(req.Header, "content-type") == "" {
 		setHeaderRaw(req.Header, "content-type", "application/json")

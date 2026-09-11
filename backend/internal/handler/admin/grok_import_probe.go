@@ -202,6 +202,7 @@ func ProvideAccountHandler(
 	geminiOAuthService *service.GeminiOAuthService,
 	antigravityOAuthService *service.AntigravityOAuthService,
 	grokOAuthService service.GrokOAuthTokenService,
+	kimiOAuthService service.KimiOAuthTokenService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
@@ -230,5 +231,6 @@ func ProvideAccountHandler(
 	)
 	handler.grokImportProber = grokQuotaService
 	handler.cfg = cfg
+	handler.kimiOAuthService = kimiOAuthService
 	return handler
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls } from '../credentialsBuilder'
+import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls, defaultKimiOAuthAdaptiveBaseUrls } from '../credentialsBuilder'
 
 describe('cnSupportsNativeResponses', () => {
   it('is true for DeepSeek, Kimi, and MiniMax', () => {
@@ -23,6 +23,11 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       chat_completions: 'https://api.kimi.com/coding/v1',
       anthropic: 'https://api.kimi.com/coding',
       responses: 'https://api.kimi.com/coding/v1'
+    })
+    expect(defaultKimiOAuthAdaptiveBaseUrls('global')).toEqual({
+      chat_completions: 'https://api.kimi.ai/coding/v1',
+      anthropic: 'https://api.kimi.ai/coding',
+      responses: 'https://api.kimi.ai/coding/v1'
     })
   })
 

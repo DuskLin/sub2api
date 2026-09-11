@@ -2051,6 +2051,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	if account.IsKimiOAuth() {
+		account.ApplyKimiCodeIdentityHeaders(req.Header)
+	}
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)

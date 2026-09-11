@@ -287,7 +287,10 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'payg', protocol: 'responses', label: 'Moonshot Responses', url: 'https://api.moonshot.cn/v1' },
     { mode: 'coding', protocol: 'chat_completions', label: 'Kimi For Coding', url: 'https://api.kimi.com/coding/v1' },
     { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' },
-    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' }
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Kimi Code Global', url: 'https://api.kimi.ai/coding/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Code Global Anthropic', url: 'https://api.kimi.ai/coding' },
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Code Global Responses', url: 'https://api.kimi.ai/coding/v1' }
   ],
   zhipu: [
     { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
@@ -363,6 +366,21 @@ export function defaultCNAdaptiveBaseUrls(
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
     responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
+}
+
+export type KimiOAuthRegion = 'mainland-cn' | 'global'
+
+export function defaultKimiOAuthAdaptiveBaseUrls(
+  region: KimiOAuthRegion
+): Record<CnNativeApiProtocol, string> {
+  if (region === 'global') {
+    return {
+      chat_completions: 'https://api.kimi.ai/coding/v1',
+      anthropic: 'https://api.kimi.ai/coding',
+      responses: 'https://api.kimi.ai/coding/v1'
+    }
+  }
+  return defaultCNAdaptiveBaseUrls('kimi', 'coding')
 }
 
 // ===== 国产供应商用量单元格可见性（单一事实源） =====

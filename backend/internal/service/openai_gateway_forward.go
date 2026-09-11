@@ -1345,6 +1345,22 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	var targetURL string
 	switch account.Type {
 	case AccountTypeOAuth:
+		if account.IsKimiOAuth() {
+			baseURL := account.GetOpenAIBaseURL()
+			if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
+				baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+			}
+			if baseURL == "" {
+				targetURL = openaiPlatformAPIURL
+			} else {
+				validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+				if err != nil {
+					return nil, err
+				}
+				targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+			}
+			break
+		}
 		// OAuth accounts use ChatGPT internal API
 		targetURL = chatgptCodexURL
 	case AccountTypeSetupToken:
