@@ -490,6 +490,15 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('shows model restriction for Kimi OAuth accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kimi')
+    await selectButtonByText(wrapper, 'admin.accounts.types.kimiOauth')
+
+    expect(wrapper.find('[data-testid="oauth-model-restriction"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+  })
+
   it('submits adaptive MiniMax protocol endpoints', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'MiniMax')

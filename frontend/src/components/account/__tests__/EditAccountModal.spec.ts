@@ -478,6 +478,37 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('shows and persists model restriction for Kimi OAuth accounts', async () => {
+    const account = buildAccount()
+    account.name = 'kimi'
+    account.platform = 'kimi'
+    account.type = 'oauth'
+    account.credentials = {
+      access_token: 'kimi-at',
+      refresh_token: 'kimi-rt',
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      region: 'mainland-cn',
+      base_url: 'https://api.kimi.com/coding/v1',
+      model_mapping: {
+        'kimi-k2': 'kimi-k2'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="oauth-model-restriction"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('kimi-k2')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'kimi-k2': 'kimi-k2'
+    })
+  })
+
   it('preserves adaptive GLM endpoints on submit', async () => {
     const account = buildAccount()
     account.platform = 'zhipu'
