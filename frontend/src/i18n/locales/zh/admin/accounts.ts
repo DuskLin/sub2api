@@ -1308,6 +1308,7 @@ export default {
           regionMainland: '中国大陆',
           regionGlobal: '国际',
           regionHint: '大陆使用 auth.kimi.com / api.kimi.com；国际使用 auth.kimi.ai / api.kimi.ai。',
+          regionLocked: '区域绑定 OAuth 登录域名，更换区域请重新授权。下方转发端点仍可自定义。',
           errors: {
             KIMI_OAUTH_SESSION_NOT_FOUND: 'Kimi Code 登录会话已过期，请重新开始。',
             KIMI_OAUTH_UNAUTHORIZED: 'Kimi Code refresh token 无效或已被撤销。',

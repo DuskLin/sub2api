@@ -836,6 +836,9 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	if platform == PlatformKimi {
+		return normalizeKimiRequestedModel(trimmed)
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
@@ -843,6 +846,20 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 		return "gemini-3.1-pro-preview"
 	}
 	return trimmed
+}
+
+// normalizeKimiRequestedModel maps client-facing Kimi IDs onto Kimi Code
+// upstream IDs. Official coding catalogs expose k3 / k3-256k; clients and the
+// admin test picker commonly send kimi-k3 / kimi-k3-256k.
+func normalizeKimiRequestedModel(model string) string {
+	switch strings.ToLower(model) {
+	case "kimi-k3":
+		return "k3"
+	case "kimi-k3-256k":
+		return "k3-256k"
+	default:
+		return model
+	}
 }
 
 func mappingSupportsRequestedModel(mapping map[string]string, requestedModel string) bool {
@@ -1342,10 +1359,13 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 	return a != nil && a.IsOpenAI() && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
-// UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
-// accounts whose platform is implicit, while adding OpenAI SetupToken.
+// UsesOpenAICodexProtocol reports ChatGPT/Codex inference routing
+// (chatgpt.com Host, session_id isolation, Codex UA). Only OpenAI OAuth /
+// SetupToken accounts use that protocol; Kimi/Grok OAuth share Type=oauth
+// but talk to their own upstreams. Treating them as Codex used to set
+// Host: chatgpt.com on Kimi /v1/responses and get an nginx 404.
 func (a *Account) UsesOpenAICodexProtocol() bool {
-	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike())
+	return a.IsOpenAIOAuthLike()
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {

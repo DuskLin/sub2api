@@ -614,8 +614,8 @@
         </div>
       </div>
 
-      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek) -->
-      <div v-if="isCNPlatform" class="mt-4">
+      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek API Key) -->
+      <div v-if="isCNPlatform && !isKimiOAuthCreateFlow" class="mt-4">
         <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <button
@@ -2270,10 +2270,11 @@
         </div>
       </div>
 
-      <!-- Grok OAuth Header Override (OAuth 类型没有 apikey 容器，需要独立区域) -->
+      <!-- Grok / Kimi OAuth Header Override (OAuth 类型没有 apikey 容器，需要独立区域) -->
       <div
-        v-if="form.platform === 'grok' && isOAuthFlow"
+        v-if="(form.platform === 'grok' || form.platform === 'kimi') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-header-override"
       >
         <div class="mb-3 flex items-center justify-between">
           <div>
@@ -3978,6 +3979,7 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyKimiOAuthRouting,
   cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
@@ -4198,6 +4200,9 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   responses: ''
 })
 const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
+const isKimiOAuthCreateFlow = computed(
+  () => form.platform === 'kimi' && accountCategory.value === 'oauth-based'
+)
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<CnProviderPlatform>(() => {
@@ -4291,7 +4296,7 @@ function selectCNPlatform(platform: CnProviderPlatform) {
 }
 // 账号类型 / 协议变更时同步默认 base url。
 watch(accountMode, (mode, previousMode) => {
-  if (!isCNPlatform.value) return
+  if (!isCNPlatform.value || isKimiOAuthCreateFlow.value) return
   if (apiProtocol.value === 'adaptive') {
     const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
     const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
@@ -4306,9 +4311,9 @@ watch(accountMode, (mode, previousMode) => {
   apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, mode, apiProtocol.value)
 })
 watch(apiProtocol, (protocol) => {
-  if (!isCNPlatform.value) return
+  if (!isCNPlatform.value || isKimiOAuthCreateFlow.value) return
+  const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
   if (protocol === 'adaptive') {
-    const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
     for (const item of cnAdaptiveProtocolOptions.value) {
       if (!adaptiveBaseUrls.value[item.value]) adaptiveBaseUrls.value[item.value] = defaults[item.value]
     }
@@ -5901,13 +5906,17 @@ const handleGenerateUrl = async () => {
 
 const createKimiOAuthAccount = async (tokenInfo: NonNullable<Awaited<ReturnType<typeof kimiOAuth.validateRefreshToken>>>) => {
   if (!tokenInfo) return
-  const credentials = kimiOAuth.buildCredentials(tokenInfo)
-  credentials.account_mode = 'coding'
-  credentials.api_protocol = apiProtocol.value
-  if (apiProtocol.value === 'adaptive') {
-    credentials.api_base_urls = defaultKimiOAuthAdaptiveBaseUrls(kimiOAuthRegion.value)
-    credentials.base_url = (credentials.api_base_urls as Record<string, string>).chat_completions
+  if (headerOverrideEnabled.value) {
+    const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
+    if (headerError) {
+      appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
+      return
+    }
   }
+  const credentials = kimiOAuth.buildCredentials(tokenInfo)
+  const defaults = defaultKimiOAuthAdaptiveBaseUrls(kimiOAuthRegion.value)
+  applyKimiOAuthRouting(credentials, 'adaptive', kimiOAuthRegion.value, defaults, defaults.chat_completions)
+  applyHeaderOverride(credentials, headerOverrideEnabled.value, headerOverrideRows.value, 'create')
   const extra = kimiOAuth.buildExtraInfo(tokenInfo)
   await createAccountAndFinish('kimi', 'oauth', credentials, extra)
 }

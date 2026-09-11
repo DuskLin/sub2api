@@ -509,6 +509,44 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('shows region but not protocol endpoints for Kimi OAuth accounts', async () => {
+    const account = buildAccount()
+    account.name = 'kimi'
+    account.platform = 'kimi'
+    account.type = 'oauth'
+    account.credentials = {
+      access_token: 'kimi-at',
+      refresh_token: 'kimi-rt',
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      region: 'global',
+      base_url: 'https://api.kimi.ai/coding/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.kimi.ai/coding/v1',
+        anthropic: 'https://api.kimi.ai/coding',
+        responses: 'https://api.kimi.ai/coding/v1'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="kimi-oauth-routing"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.accounts.oauth.kimi.regionGlobal')
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-chat_completions"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.accounts.cnProviders.apiProtocol.title')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      region: 'global',
+      base_url: 'https://api.kimi.ai/coding/v1'
+    })
+  })
+
   it('preserves adaptive GLM endpoints on submit', async () => {
     const account = buildAccount()
     account.platform = 'zhipu'

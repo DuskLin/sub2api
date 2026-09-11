@@ -1243,6 +1243,7 @@ export default {
           regionMainland: 'Mainland China',
           regionGlobal: 'Global',
           regionHint: 'Mainland uses auth.kimi.com / api.kimi.com. Global uses auth.kimi.ai / api.kimi.ai.',
+          regionLocked: 'Region is bound to the OAuth login host. Re-authorize to switch regions. Endpoints below can still be customized.',
           errors: {
             KIMI_OAUTH_SESSION_NOT_FOUND: 'The Kimi Code login session expired. Please start again.',
             KIMI_OAUTH_UNAUTHORIZED: 'Kimi Code refresh token is invalid or revoked.',

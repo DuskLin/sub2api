@@ -220,12 +220,10 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 		}
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
 	}
-	if account.IsKimiOAuth() {
-		account.ApplyKimiCodeIdentityHeaders(upstreamReq.Header)
-	}
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
 	account.ApplyHeaderOverrides(upstreamReq.Header)
+	account.SealKimiOAuthUpstreamHeaders(upstreamReq.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, upstreamReq.Header)
 
 	proxyURL := ""

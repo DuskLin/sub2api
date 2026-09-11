@@ -40,6 +40,28 @@ func (a *Account) ApplyKimiCodeIdentityHeaders(headers http.Header) {
 	applyKimiCodeIdentityHeaders(headers, a.GetKimiDeviceID())
 }
 
+func isKimiCodeSealedIdentityHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "user-agent",
+		"x-msh-platform",
+		"x-msh-version",
+		"x-msh-device-name",
+		"x-msh-device-model",
+		"x-msh-os-version",
+		"x-msh-device-id":
+		return true
+	default:
+		return false
+	}
+}
+
+// SealKimiOAuthUpstreamHeaders 在账号覆写之后重新盖上 Kimi Code CLI 身份。
+// OAuth 出站必须始终使用官方 CLI UA / X-Msh-*，不能被 ForceCodexCLI、
+// 客户端 UA 或 header_overrides 改掉。
+func (a *Account) SealKimiOAuthUpstreamHeaders(headers http.Header) {
+	a.ApplyKimiCodeIdentityHeaders(headers)
+}
+
 func asciiHeaderValue(value string) string {
 	cleaned := strings.Map(func(r rune) rune {
 		if r < 0x20 || r > 0x7e {

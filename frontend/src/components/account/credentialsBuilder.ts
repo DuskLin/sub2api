@@ -25,7 +25,7 @@ export function applyAntigravityProjectID(
   }
 }
 
-// ========== 请求头覆写（API-key 平台 + grok 的 api_key/oauth 账号） ==========
+// ========== 请求头覆写（API-key 平台 + grok/kimi 的 api_key/oauth 账号） ==========
 
 export const HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY = 'header_override_enabled'
 export const HEADER_OVERRIDES_CREDENTIAL_KEY = 'header_overrides'
@@ -40,14 +40,13 @@ export function isHeaderOverrideCapable(platform: string, type: string): boolean
   if (
     platform === 'anthropic' ||
     platform === 'openai' ||
-    platform === 'kimi' ||
     platform === 'zhipu' ||
     platform === 'deepseek' ||
     platform === 'minimax'
   ) {
     return type === 'apikey'
   }
-  if (platform === 'grok') {
+  if (platform === 'grok' || platform === 'kimi') {
     return type === 'apikey' || type === 'oauth'
   }
   return false
@@ -381,6 +380,35 @@ export function defaultKimiOAuthAdaptiveBaseUrls(
     }
   }
   return defaultCNAdaptiveBaseUrls('kimi', 'coding')
+}
+
+function kimiOAuthNativeProtocol(protocol: CnApiProtocol): CnNativeApiProtocol {
+  return protocol === 'anthropic' || protocol === 'responses' ? protocol : 'chat_completions'
+}
+
+/** 把 Kimi Code OAuth 的协议与转发端点写入 credentials（账号类型固定 coding）。 */
+export function applyKimiOAuthRouting(
+  credentials: Record<string, unknown>,
+  protocol: CnApiProtocol,
+  region: KimiOAuthRegion,
+  adaptiveBaseUrls: Record<CnNativeApiProtocol, string>,
+  legacyBaseUrl: string
+): void {
+  credentials.account_mode = 'coding'
+  credentials.api_protocol = protocol
+  const defaults = defaultKimiOAuthAdaptiveBaseUrls(region)
+  if (protocol === 'adaptive') {
+    const protocolBaseUrls: Record<string, string> = {
+      chat_completions: (adaptiveBaseUrls.chat_completions || defaults.chat_completions).trim(),
+      anthropic: (adaptiveBaseUrls.anthropic || defaults.anthropic).trim(),
+      responses: (adaptiveBaseUrls.responses || defaults.responses).trim()
+    }
+    credentials.api_base_urls = protocolBaseUrls
+    credentials.base_url = protocolBaseUrls.chat_completions
+    return
+  }
+  delete credentials.api_base_urls
+  credentials.base_url = legacyBaseUrl.trim() || defaults[kimiOAuthNativeProtocol(protocol)]
 }
 
 // ===== 国产供应商用量单元格可见性（单一事实源） =====

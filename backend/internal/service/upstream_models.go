@@ -1026,11 +1026,8 @@ func buildOpenAIAPIKeyModelsRequest(ctx context.Context, account *Account, valid
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	if account.IsKimiOAuth() {
-		account.ApplyKimiCodeIdentityHeaders(req.Header)
-	}
-	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	account.SealKimiOAuthUpstreamHeaders(req.Header)
 	return req, nil
 }
 

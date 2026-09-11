@@ -3,7 +3,6 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { KimiOAuthRegion, KimiTokenInfo } from '@/api/admin/kimi'
-import { defaultKimiOAuthAdaptiveBaseUrls } from '@/components/account/credentialsBuilder'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 
 export function useKimiOAuth() {
@@ -151,7 +150,6 @@ export function useKimiOAuth() {
 
   const buildCredentials = (tokenInfo: KimiTokenInfo): Record<string, unknown> => {
     const selectedRegion: KimiOAuthRegion = tokenInfo.region === 'global' ? 'global' : 'mainland-cn'
-    const endpoints = defaultKimiOAuthAdaptiveBaseUrls(selectedRegion)
     const credentials: Record<string, unknown> = {
       access_token: tokenInfo.access_token,
       refresh_token: tokenInfo.refresh_token,
@@ -166,10 +164,7 @@ export function useKimiOAuth() {
       email: tokenInfo.email,
       nickname: tokenInfo.nickname,
       user_id: tokenInfo.user_id,
-      account_mode: 'coding',
-      api_protocol: 'adaptive',
-      base_url: endpoints.chat_completions,
-      api_base_urls: endpoints
+      account_mode: 'coding'
     }
     return Object.fromEntries(
       Object.entries(credentials).filter(([, value]) => value !== undefined && value !== '')

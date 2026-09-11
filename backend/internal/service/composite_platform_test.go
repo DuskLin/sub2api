@@ -170,6 +170,7 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "grok", model: "grok-4", platform: PlatformGrok, ok: true},
 		{name: "xai prefix", model: "xai/grok-4", platform: PlatformGrok, ok: true},
 		{name: "kimi", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
+		{name: "kimi k3", model: "kimi-k3", platform: PlatformKimi, ok: true},
 		{name: "kimi code bare k3", model: "K3", platform: PlatformKimi, ok: true},
 		{name: "kimi code bare k3 256k", model: "k3-256k", platform: PlatformKimi, ok: true},
 		{name: "kimi code provider prefix", model: "kimi-code/k3", platform: PlatformKimi, ok: true},

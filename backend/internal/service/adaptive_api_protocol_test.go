@@ -203,6 +203,34 @@ func TestAdaptiveProtocolRoutesKimiCodingResponsesToNativeResponses(t *testing.T
 	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 }
 
+func TestAdaptiveProtocolRoutesKimiOAuthResponsesWithIdentityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"k3","input":"hello","stream":false}`)
+	upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := adaptiveProtocolTestAccount(PlatformKimi, map[string]any{
+		APIProtocolChatCompletions: "https://api.kimi.com/coding/v1",
+		APIProtocolAnthropic:       "https://api.kimi.com/coding",
+		APIProtocolResponses:       "https://api.kimi.com/coding/v1",
+	})
+	account.Type = AccountTypeOAuth
+	account.Credentials["account_mode"] = AccountModeCoding
+	account.Credentials["access_token"] = "kimi-at"
+	account.Credentials["device_id"] = "device-kimi-1"
+
+	_, err := svc.Forward(context.Background(), adaptiveProtocolTestContext("/v1/responses", body), account, body)
+	require.Error(t, err)
+	require.Equal(t, "https://api.kimi.com/coding/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, KimiCodeCLIPlatform, upstream.lastReq.Header.Get("X-Msh-Platform"))
+	require.Equal(t, KimiCodeCLIVersion, upstream.lastReq.Header.Get("X-Msh-Version"))
+	require.Equal(t, "device-kimi-1", upstream.lastReq.Header.Get("X-Msh-Device-Id"))
+	require.Equal(t, KimiCodeCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, "Bearer kimi-at", upstream.lastReq.Header.Get("Authorization"))
+	require.NotEqual(t, "chatgpt.com", upstream.lastReq.Host)
+	require.Equal(t, "api.kimi.com", upstream.lastReq.URL.Host)
+	require.False(t, account.UsesOpenAICodexProtocol())
+}
+
 func TestAdaptiveProtocolRoutesDeepSeekResponsesToNativeResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"deepseek-v4","input":"hello","max_output_tokens":32,"store":true,"previous_response_id":"resp_old","stream":false}`)

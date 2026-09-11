@@ -26,6 +26,21 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <!-- Kimi OAuth: region is bound to the login host; protocol/endpoints are official defaults. -->
+      <div v-if="isKimiOAuthAccount" class="space-y-4" data-testid="kimi-oauth-routing">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.oauth.kimi.region') }}</label>
+          <p class="mt-1 text-sm text-gray-800 dark:text-gray-200">
+            {{
+              editKimiOAuthRegion === 'global'
+                ? t('admin.accounts.oauth.kimi.regionGlobal')
+                : t('admin.accounts.oauth.kimi.regionMainland')
+            }}
+          </p>
+          <p class="input-hint">{{ t('admin.accounts.oauth.kimi.regionLocked') }}</p>
+        </div>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -3013,6 +3028,7 @@ import {
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isCNProviderPlatform,
+  type KimiOAuthRegion,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   type CnAccountMode,
@@ -3125,6 +3141,11 @@ const editApiKey = ref('')
 const isCNApiKeyAccount = computed(
   () => props.account?.type === 'apikey' && isCNProviderPlatform(props.account.platform)
 )
+const isKimiOAuthAccount = computed(
+  () => props.account?.platform === 'kimi' && props.account?.type === 'oauth'
+)
+const editKimiOAuthRegion = ref<KimiOAuthRegion>('mainland-cn')
+const isCNRoutingEditable = computed(() => isCNApiKeyAccount.value)
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<CnProviderPlatform>(() => {
@@ -3181,7 +3202,7 @@ const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol;
   return opts
 })
 watch(editApiProtocol, (protocol, previousProtocol) => {
-  if (!isCNApiKeyAccount.value || syncingForm.value) return
+  if (!isCNRoutingEditable.value || syncingForm.value) return
   if (protocol === 'adaptive') {
     const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, editAccountMode.value)
     for (const item of editAdaptiveProtocolOptions.value) {
@@ -4247,6 +4268,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'kimi') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+      if (newAccount.platform === 'kimi') {
+        editAccountMode.value = 'coding'
+        editKimiOAuthRegion.value = oauthCredentials.region === 'global' ? 'global' : 'mainland-cn'
+      }
     } else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
@@ -5163,6 +5188,16 @@ const handleSubmit = async () => {
         } else {
           delete newCredentials.model_mapping
         }
+      }
+      if (props.account.platform === 'kimi') {
+        if (headerOverrideEnabled.value) {
+          const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
+          if (headerError) {
+            appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
+            return
+          }
+        }
+        applyHeaderOverride(newCredentials, headerOverrideEnabled.value, headerOverrideRows.value, 'edit')
       }
 
       updatePayload.credentials = newCredentials

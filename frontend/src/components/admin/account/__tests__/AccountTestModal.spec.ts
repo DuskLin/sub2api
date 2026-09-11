@@ -187,6 +187,45 @@ describe('AccountTestModal', () => {
     })
   })
 
+  it('kimi OAuth 账号测试默认选择 Kimi 模型而不是 Claude', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'kimi-k2.6', display_name: 'Kimi K2.6' },
+      { id: 'kimi-k2', display_name: 'Kimi K2' },
+      { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"kimi-k2.6"}\n',
+        'data: {"type":"content","text":"ok"}\n',
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 46,
+      name: 'Kimi OAuth',
+      platform: 'kimi',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toEqual({
+      model_id: 'kimi-k2.6',
+      prompt: ''
+    })
+  })
+
   it('OpenAI Compact 探测会携带 compact 测试模式', async () => {
     getAvailableModels.mockResolvedValue([
       { id: 'gpt-5.4', display_name: 'GPT-5.4' }

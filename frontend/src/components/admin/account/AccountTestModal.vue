@@ -772,12 +772,11 @@ const loadAvailableModels = async () => {
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
-        selectedModelId.value = availableModels.value[0].id
-      } else {
-        // Try to select Sonnet as default, otherwise use first model
+      if (props.account.platform === 'anthropic') {
         const sonnetModel = availableModels.value.find((m) => m.id.includes('sonnet'))
         selectedModelId.value = sonnetModel?.id || availableModels.value[0].id
+      } else {
+        selectedModelId.value = availableModels.value[0].id
       }
     }
   } catch (error) {

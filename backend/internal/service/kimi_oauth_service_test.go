@@ -80,9 +80,21 @@ func TestKimiOAuthServiceDeviceFlowSuccess(t *testing.T) {
 
 	creds := svc.BuildAccountCredentials(result.TokenInfo)
 	require.Equal(t, AccountModeCoding, creds["account_mode"])
-	require.Equal(t, APIProtocolAdaptive, creds["api_protocol"])
-	require.Equal(t, DefaultKimiGlobalCodingBaseURL, creds["base_url"])
+	require.Equal(t, KimiRegionGlobal, creds["region"])
 	require.Equal(t, "user@example.com", creds["email"])
+	require.NotContains(t, creds, "api_protocol")
+	require.NotContains(t, creds, "base_url")
+	require.NotContains(t, creds, "api_base_urls")
+
+	preserved := MergeCredentials(map[string]any{
+		"api_protocol": APIProtocolAnthropic,
+		"base_url":     "https://relay.example.com/coding",
+		"api_base_urls": map[string]any{
+			APIProtocolChatCompletions: "https://relay.example.com/v1",
+		},
+	}, creds)
+	require.Equal(t, APIProtocolAnthropic, preserved["api_protocol"])
+	require.Equal(t, "https://relay.example.com/coding", preserved["base_url"])
 }
 
 func TestKimiOAuthServicePollPendingSlowDown(t *testing.T) {

@@ -204,11 +204,12 @@ func (s *KimiOAuthService) BuildAccountCredentials(tokenInfo *KimiTokenInfo) map
 		return nil
 	}
 	region := NormalizeKimiRegion(tokenInfo.Region)
-	oauthHost, codingBase, anthropicBase := KimiRegionEndpoints(region)
+	oauthHost, _, _ := KimiRegionEndpoints(region)
 	if strings.TrimSpace(tokenInfo.OAuthHost) != "" {
 		oauthHost = strings.TrimRight(strings.TrimSpace(tokenInfo.OAuthHost), "/")
 	}
 	expiresAt := time.Unix(tokenInfo.ExpiresAt, 0).UTC().Format(time.RFC3339)
+	// 协议与转发端点由创建/编辑表单写入；刷新令牌时不得覆盖用户自定义中转地址。
 	creds := map[string]any{
 		"access_token":  tokenInfo.AccessToken,
 		"refresh_token": tokenInfo.RefreshToken,
@@ -217,15 +218,8 @@ func (s *KimiOAuthService) BuildAccountCredentials(tokenInfo *KimiTokenInfo) map
 		"expires_in":    tokenInfo.ExpiresIn,
 		"client_id":     KimiCodeOAuthClientID,
 		"account_mode":  AccountModeCoding,
-		"api_protocol":  APIProtocolAdaptive,
 		"region":        region,
 		"oauth_host":    oauthHost,
-		"base_url":      codingBase,
-		"api_base_urls": map[string]any{
-			APIProtocolChatCompletions: codingBase,
-			APIProtocolAnthropic:       anthropicBase,
-			APIProtocolResponses:       codingBase,
-		},
 	}
 	if tokenInfo.Scope != "" {
 		creds["scope"] = tokenInfo.Scope
