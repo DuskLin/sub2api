@@ -316,7 +316,7 @@ Use the automated deployment script for easy setup:
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
 # Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/DuskLin/sub2api/local/deploy/docker-deploy.sh | bash
 
 # Start services
 docker compose up -d
@@ -338,7 +338,7 @@ If you prefer manual setup:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone --branch local https://github.com/DuskLin/sub2api.git
 cd sub2api/deploy
 
 # 2. Copy environment configuration
@@ -468,7 +468,7 @@ rm -rf data/ postgres_data/ redis_data/
 Apple-silicon Macs running macOS 26 can run the full Sub2API, PostgreSQL, and Redis stack with Apple `container` 1.1.0 or newer:
 
 ```bash
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone --branch local https://github.com/DuskLin/sub2api.git
 cd sub2api/deploy
 ./apple-container.sh init
 ./apple-container.sh up

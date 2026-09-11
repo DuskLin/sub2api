@@ -1,14 +1,13 @@
-name: Release
+name: Local Release
 
 on:
   push:
     tags:
-      - 'v*'
-      - '!v*-local.*'
+      - 'v*-local.*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g., v1.0.0)'
+        description: 'Local tag to release (e.g., v0.2.5-local.1)'
         required: true
         type: string
       simple_release:
@@ -17,23 +16,22 @@ on:
         type: boolean
         default: false
 
-# 环境变量：合并 workflow_dispatch 输入和 repository variable
-# tag push 触发时读取 vars.SIMPLE_RELEASE，workflow_dispatch 时使用输入参数
 env:
   SIMPLE_RELEASE: ${{ github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true' }}
-  IMAGE_NAME: sub2api
+  IMAGE_NAME: sub2api-local
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  # Update VERSION file with tag version
   update-version:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout local release ref
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Update VERSION file
         run: |
@@ -49,15 +47,17 @@ jobs:
       - name: Upload VERSION artifact
         uses: actions/upload-artifact@v7
         with:
-          name: version-file
+          name: local-version-file
           path: backend/cmd/server/VERSION
           retention-days: 1
 
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout local release ref
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -82,7 +82,7 @@ jobs:
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v7
         with:
-          name: frontend-dist
+          name: local-frontend-dist
           path: backend/internal/web/dist/
           retention-days: 1
 
@@ -92,7 +92,7 @@ jobs:
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
-      - name: Checkout
+      - name: Checkout local release ref
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -101,13 +101,13 @@ jobs:
       - name: Download VERSION artifact
         uses: actions/download-artifact@v8
         with:
-          name: version-file
+          name: local-version-file
           path: backend/cmd/server/
 
       - name: Download frontend artifact
         uses: actions/download-artifact@v8
         with:
-          name: frontend-dist
+          name: local-frontend-dist
           path: backend/internal/web/dist/
 
       - name: Setup Go
@@ -121,7 +121,6 @@ jobs:
         run: |
           go version | grep -q 'go1.27.0'
 
-      # Docker setup for GoReleaser
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -131,8 +130,6 @@ jobs:
       - name: Login to DockerHub
         if: ${{ env.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@v3
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -145,9 +142,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch tags with annotations
-        run: |
-          # 确保获取完整的 annotated tag 信息
-          git fetch --tags --force
+        run: git fetch --tags --force
 
       - name: Get tag message
         id: tag_message
@@ -158,23 +153,16 @@ jobs:
             TAG_NAME=${GITHUB_REF#refs/tags/}
           fi
           echo "Processing tag: $TAG_NAME"
-
-          # 获取完整的 tag message（跳过第一行标题）
           TAG_MESSAGE=$(git tag -l --format='%(contents:body)' "$TAG_NAME")
-
-          # 调试输出
-          echo "Tag message length: ${#TAG_MESSAGE}"
-          echo "Tag message preview:"
-          echo "$TAG_MESSAGE" | head -10
-
-          # 使用 EOF 分隔符处理多行内容
-          echo "message<<EOF" >> $GITHUB_OUTPUT
-          echo "$TAG_MESSAGE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "message<<EOF"
+            echo "$TAG_MESSAGE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set lowercase owner for GHCR
         id: lowercase
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
@@ -190,105 +178,27 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'skip' }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
 
-      # Update DockerHub description
       - name: Update DockerHub description
         if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' }}
         uses: peter-evans/dockerhub-description@v5
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-          short-description: "Sub2API - AI API Gateway Platform"
+          short-description: "Sub2API local development image"
           readme-filepath: ./deploy/DOCKER.md
-
-      # Send Telegram notification
-      - name: Send Telegram Notification
-        if: ${{ env.SIMPLE_RELEASE != 'true' }}
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        continue-on-error: true
-        run: |
-          # 检查必要的环境变量
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "Telegram credentials not configured, skipping notification"
-            exit 0
-          fi
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG_NAME=${{ github.event.inputs.tag }}
-          else
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-          fi
-          VERSION=${TAG_NAME#v}
-          REPO="${{ github.repository }}"
-          IMAGE_NAME="${{ env.IMAGE_NAME }}"
-          GHCR_IMAGE="ghcr.io/${REPO,,}/${IMAGE_NAME}"  # ${,,} converts to lowercase
-
-          # 获取 tag message 内容并转义 Markdown 特殊字符
-          TAG_MESSAGE='${{ steps.tag_message.outputs.message }}'
-          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/\([_*`\[]\)/\\\1/g')
-
-          # 限制消息长度（Telegram 消息限制 4096 字符，预留空间给头尾固定内容）
-          if [ ${#TAG_MESSAGE} -gt 3500 ]; then
-            TAG_MESSAGE="${TAG_MESSAGE:0:3500}..."
-          fi
-
-          # 构建消息内容
-          MESSAGE="🚀 *Sub2API 新版本发布！*"$'\n'$'\n'
-          MESSAGE+="📦 版本号: \`${VERSION}\`"$'\n'$'\n'
-
-          # 添加更新内容
-          if [ -n "$TAG_MESSAGE" ]; then
-            MESSAGE+="${TAG_MESSAGE}"$'\n'$'\n'
-          fi
-
-          MESSAGE+="🐳 *Docker 部署:*"$'\n'
-          MESSAGE+="\`\`\`bash"$'\n'
-          # 根据是否配置 DockerHub 动态生成
-          if [ -n "$DOCKERHUB_USERNAME" ]; then
-            DOCKER_IMAGE="${DOCKERHUB_USERNAME}/${IMAGE_NAME}"
-            MESSAGE+="# Docker Hub"$'\n'
-            MESSAGE+="docker pull ${DOCKER_IMAGE}:${VERSION}"$'\n'
-            MESSAGE+="# GitHub Container Registry"$'\n'
-          fi
-          MESSAGE+="docker pull ${GHCR_IMAGE}:${VERSION}"$'\n'
-          MESSAGE+="\`\`\`"$'\n'$'\n'
-          MESSAGE+="🔗 *相关链接:*"$'\n'
-          MESSAGE+="• [GitHub Release](https://github.com/${REPO}/releases/tag/${TAG_NAME})"$'\n'
-          if [ -n "$DOCKERHUB_USERNAME" ]; then
-            MESSAGE+="• [Docker Hub](https://hub.docker.com/r/${DOCKER_IMAGE})"$'\n'
-          fi
-          MESSAGE+="• [GitHub Packages](https://github.com/${REPO}/pkgs/container/${IMAGE_NAME})"$'\n'$'\n'
-          MESSAGE+="#Sub2API #Release #${TAG_NAME//./_}"
-
-          # 发送消息
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg chat_id "${TELEGRAM_CHAT_ID}" \
-              --arg text "${MESSAGE}" \
-              '{
-                chat_id: $chat_id,
-                text: $text,
-                parse_mode: "Markdown",
-                disable_web_page_preview: true
-              }')"
 
   sync-version-file:
     needs: [release]
     if: ${{ needs.release.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout default branch
+      - name: Checkout local branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: local
 
-      - name: Sync VERSION file to released tag
+      - name: Sync VERSION file to local branch
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION=${{ github.event.inputs.tag }}
@@ -308,5 +218,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend/cmd/server/VERSION
-          git commit -m "chore: sync VERSION to ${VERSION} [skip ci]"
-          git push origin HEAD:${{ github.event.repository.default_branch }}
+          git commit -m "chore: sync local VERSION to ${VERSION} [skip ci]"
+          git push origin HEAD:local
