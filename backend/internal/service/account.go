@@ -336,9 +336,9 @@ func (a *Account) IsCNProvider() bool {
 
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
-// 兼容上游，也经 OpenAI 网关转发。
+// 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider())
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1412,13 +1412,13 @@ func (a *Account) IsOpenAIApiKey() bool {
 }
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
-// 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）；grok 走 GetGrokBaseURL，
-// 此处对 grok 返回 "" 以保持原有行为。
+// 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
+// grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() && !a.IsCNProvider() {
+	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() {
 		return ""
 	}
-	if a.IsCNProvider() && a.IsAdaptiveAPIProtocol() {
+	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
 			if baseURL, ok := baseURLs[APIProtocolChatCompletions].(string); ok && strings.TrimSpace(baseURL) != "" {
 				return strings.TrimSpace(baseURL)
@@ -1446,6 +1446,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultDeepseekBaseURL
 	case PlatformMiniMax:
 		return DefaultMiniMaxBaseURL
+	case PlatformOpenCodeGo:
+		return a.openCodeDefaultChatBaseURL()
 	default:
 		return "https://api.openai.com"
 	}
@@ -1477,7 +1479,7 @@ func (a *Account) IsCodingPlan() bool {
 // （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 支持（官方原生
 // Responses 端点，适配 Codex）；zhipu 无此端点。
 func (a *Account) GetAPIProtocol() string {
-	if a == nil || !a.IsCNProvider() {
+	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return APIProtocolChatCompletions
 	}
 	switch strings.TrimSpace(a.GetCredential("api_protocol")) {
@@ -1492,6 +1494,9 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolChatCompletions:
 		return APIProtocolChatCompletions
 	}
+	if a.IsOpenCodeGo() {
+		return APIProtocolAdaptive
+	}
 	return APIProtocolChatCompletions
 }
 
@@ -1503,7 +1508,7 @@ func (a *Account) SupportsNativeCNResponses() bool {
 		return false
 	}
 	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformMiniMax:
+	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
 		return true
 	default:
 		return false
@@ -1533,7 +1538,7 @@ func (a *Account) IsAdaptiveAPIProtocol() bool {
 // adaptive 账号优先使用 api_base_urls 中的分协议地址，缺失时按平台和
 // account_mode 使用官方默认端点。base_url 继续作为 Chat Completions 地址兼容旧字段。
 func (a *Account) GetCNProtocolBaseURL(protocol string) string {
-	if a == nil || !a.IsCNProvider() {
+	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
 	if a.IsAdaptiveAPIProtocol() {
@@ -1566,6 +1571,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultDeepseekAnthropicBaseURL
 		case PlatformMiniMax:
 			return DefaultMiniMaxAnthropicBaseURL
+		case PlatformOpenCodeGo:
+			return a.openCodeDefaultAnthropicBaseURL()
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1583,6 +1590,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultDeepseekBaseURL
 		case PlatformMiniMax:
 			return DefaultMiniMaxBaseURL
+		case PlatformOpenCodeGo:
+			return a.openCodeDefaultChatBaseURL()
 		}
 	}
 	return ""
@@ -1631,6 +1640,8 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultDeepseekAnthropicBaseURL
 	case PlatformMiniMax:
 		return DefaultMiniMaxAnthropicBaseURL
+	case PlatformOpenCodeGo:
+		return a.openCodeDefaultAnthropicBaseURL()
 	default:
 		return ""
 	}
@@ -1660,6 +1671,8 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 		return DefaultDeepseekBaseURL
 	case PlatformMiniMax:
 		return DefaultMiniMaxBaseURL
+	case PlatformOpenCodeGo:
+		return a.openCodeDefaultChatBaseURL()
 	default:
 		return a.GetOpenAIBaseURL()
 	}
@@ -1668,15 +1681,16 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 // GetCNAPIKey 返回国产 OpenAI 兼容供应商账号的 api_key 凭据（kimi/zhipu/deepseek）。
 // 与 openai 的 GetOpenAIApiKey 区分：后者仅对 openai 平台返回。
 func (a *Account) GetCNAPIKey() string {
-	if a == nil || !a.IsCNProvider() {
+	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
 	return a.GetCredential("api_key")
 }
 
-// GetCNAuthToken 返回国产供应商请求鉴权令牌：Kimi Code OAuth 用 access_token，其余用 api_key。
+// GetCNAuthToken 返回多协议供应商鉴权令牌：Kimi Code OAuth 用 access_token，
+// 国产 API Key 和 OpenCode 账号用 api_key。
 func (a *Account) GetCNAuthToken() string {
-	if a == nil || !a.IsCNProvider() {
+	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
 	if a.IsKimiOAuth() {
@@ -1689,7 +1703,13 @@ func (a *Account) GetCNAuthToken() string {
 // 用于路由到对应的额度查询端点。非 coding 模式或无法识别时返回空串。
 // 只认官方域名：自定义中转不得把第三方 Key 发往厂商官方额度端点。
 func (a *Account) GetCodingPlanProvider() string {
-	if a == nil || !a.IsCodingPlan() {
+	if a == nil {
+		return ""
+	}
+	if a.IsOpenCodeGoPlan() {
+		return PlatformOpenCodeGo
+	}
+	if !a.IsCodingPlan() {
 		return ""
 	}
 	baseURL := strings.ToLower(a.GetOpenAIBaseURL())
@@ -1818,17 +1838,18 @@ func (a *Account) GetOpenAIApiKey() string {
 }
 
 // GetOpenAIProtocolAPIKey 返回 OpenAI 协议族 APIKey 账号的密钥。
-// 覆盖 openai 原生账号与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）账号，
-// 供转发鉴权、模型列表同步等协议族共用路径使用。注意 IsOpenAIApiKey 语义上
-// 仅指 openai 平台账号，调度倍率/WS 能力门控继续以其为准，不受本方法影响。
+// 覆盖 openai 原生账号、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）
+// 以及 OpenCode Go 账号，供转发鉴权、模型列表同步等协议族共用路径使用。
+// 注意 IsOpenAIApiKey 语义上仅指 openai 平台账号，调度倍率/WS 能力门控
+// 继续以其为准，不受本方法影响。
 func (a *Account) GetOpenAIProtocolAPIKey() string {
 	if a == nil {
 		return ""
 	}
-	if a.IsCNProvider() {
-		if a.IsKimiOAuth() {
-			return a.GetKimiAccessToken()
-		}
+	if a.IsKimiOAuth() {
+		return a.GetKimiAccessToken()
+	}
+	if a.IsMultiProtocolAPIKey() {
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}

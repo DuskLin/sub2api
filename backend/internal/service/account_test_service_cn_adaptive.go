@@ -86,6 +86,7 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetCNProtocolBaseURL(APIProtocolAnthropic))
 	account.ApplyHeaderOverrides(req.Header)
 	account.SealKimiOAuthUpstreamHeaders(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -180,6 +181,7 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	applyOpenAICodexProbeHeaders(req.Header)
 	account.ApplyHeaderOverrides(req.Header)
 	account.SealKimiOAuthUpstreamHeaders(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -269,6 +271,7 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetAnthropicProtocolBaseURL())
 	account.ApplyHeaderOverrides(req.Header)
 	account.SealKimiOAuthUpstreamHeaders(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
