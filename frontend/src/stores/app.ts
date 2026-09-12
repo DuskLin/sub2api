@@ -42,6 +42,10 @@ export const useAppStore = defineStore('app', () => {
   const latestVersion = ref<string>('')
   const hasUpdate = ref<boolean>(false)
   const buildType = ref<string>('source')
+  const dockerDeployment = ref(false)
+  const updateRepository = ref('Wei-Shaw/sub2api')
+  const updateDockerImage = ref('weishaw/sub2api')
+  const versionWarning = ref('')
   const releaseInfo = ref<ReleaseInfo | null>(null)
 
   // Auto-incrementing ID for toasts
@@ -248,6 +252,10 @@ export const useAppStore = defineStore('app', () => {
         latest_version: latestVersion.value,
         has_update: hasUpdate.value,
         build_type: buildType.value,
+        docker_deployment: dockerDeployment.value,
+        repository: updateRepository.value,
+        docker_image: updateDockerImage.value,
+        warning: versionWarning.value,
         release_info: releaseInfo.value || undefined,
         cached: true
       }
@@ -265,6 +273,10 @@ export const useAppStore = defineStore('app', () => {
       latestVersion.value = data.latest_version
       hasUpdate.value = data.has_update
       buildType.value = data.build_type || 'source'
+      dockerDeployment.value = data.docker_deployment ?? false
+      updateRepository.value = data.repository || 'Wei-Shaw/sub2api'
+      updateDockerImage.value = data.docker_image || 'weishaw/sub2api'
+      versionWarning.value = data.warning || ''
       releaseInfo.value = data.release_info || null
       versionLoaded.value = true
       return data
@@ -459,6 +471,10 @@ export const useAppStore = defineStore('app', () => {
     latestVersion,
     hasUpdate,
     buildType,
+    dockerDeployment,
+    updateRepository,
+    updateDockerImage,
+    versionWarning,
     releaseInfo,
 
     // Computed

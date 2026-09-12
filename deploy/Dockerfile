@@ -82,6 +82,7 @@ RUN VERSION_VALUE="${VERSION}" && \
 # Stage 3: Final Runtime Image
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
+ENV SUB2API_DEPLOYMENT=docker
 
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"

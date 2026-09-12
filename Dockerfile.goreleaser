@@ -11,6 +11,7 @@ ARG POSTGRES_IMAGE=postgres:18-alpine
 FROM ${POSTGRES_IMAGE} AS pg-client
 
 FROM ${ALPINE_IMAGE}
+ENV SUB2API_DEPLOYMENT=docker
 
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"

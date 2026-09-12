@@ -50,6 +50,30 @@ See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, pers
 
 ## Docker Deployment (Recommended)
 
+### Local fork releases and update notifications
+
+Images from `local` use tags such as `jlliu0204/sub2api-local:0.2.4-local.3`.
+The application checks `DuskLin/sub2api` releases in the `vX.Y.Z-local.N`
+channel (including prereleases), and compares the numeric local revision.
+It never offers official stable releases to local builds. GitHub release checks
+are cached for 20 minutes; use the version badge's refresh button to check now.
+
+Docker images declare `SUB2API_DEPLOYMENT=docker`. The version badge provides
+image replacement commands for updates and rollback; in-place binary replacement
+is disabled in these containers. Back up data and set the application's Compose
+`image` to the desired tag, or set `SUB2API_IMAGE` in `.env` when the Compose file
+uses that variable, then run in the deployment directory:
+
+```bash
+docker compose pull sub2api
+docker compose up -d --no-deps sub2api
+```
+
+Add `-f` to both commands if using a custom Compose filename. Replacing an image
+does not undo database migrations. Existing `local.1`/`local.2` builds must first
+be upgraded manually to a release containing this update-channel support.
+Publishing a new image alone cannot change the updater inside an old container.
+
 ### Method 1: One-Click Deployment (Recommended)
 
 Use the automated preparation script for the easiest setup:

@@ -115,6 +115,9 @@
               </div>
 
               <!-- Priority 1: Update error (must check before hasUpdate) -->
+              <p v-if="appStore.versionWarning" class="mb-3 text-xs text-amber-600 dark:text-amber-400">
+                {{ appStore.versionWarning }}
+              </p>
               <div v-if="updateError" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800/50 dark:bg-red-900/20"
@@ -318,7 +321,15 @@
                 </div>
 
                 <!-- Update button -->
+                <div v-if="appStore.dockerDeployment" class="space-y-2">
+                  <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('version.dockerUpdateHint') }}</p>
+                  <code class="block whitespace-pre-wrap break-all rounded bg-gray-50 p-2 text-xs dark:bg-dark-900">{{ dockerUpdateCommand }}</code>
+                  <button @click="copyToClipboard(dockerUpdateCommand)" class="text-xs text-primary-500">
+                    {{ copied ? t('version.copied') : t('version.copyCommand') }}
+                  </button>
+                </div>
                 <button
+                  v-else
                   @click="handleUpdate"
                   :disabled="updating"
                   class="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -573,7 +584,7 @@
                                 :stroke-width="2"
                                 class="mt-px flex-shrink-0"
                               />
-                              {{ t('version.rollbackWarning') }}
+                              {{ t(appStore.dockerDeployment ? 'version.dockerRollbackHint' : 'version.rollbackWarning') }}
                             </p>
 
                             <p
@@ -584,6 +595,7 @@
                             </p>
 
                             <button
+                              v-if="!appStore.dockerDeployment"
                               @click="handleRollback"
                               :disabled="rollingBack"
                               class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -651,9 +663,6 @@ import {
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 
-const GITHUB_REPO = 'Wei-Shaw/sub2api'
-// Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
-const DOCKER_IMAGE = 'weishaw/sub2api'
 
 const { t } = useI18n()
 
@@ -702,7 +711,9 @@ const { copied, copyToClipboard } = useClipboard()
 // docker deployments pin the image tag instead
 const manualTab = ref<'script' | 'docker'>('script')
 
-const manualTabs = computed(() => [
+const manualTabs = computed(() => appStore.dockerDeployment ? [
+  { key: 'docker' as const, label: t('version.deployDocker') }
+] : [
   { key: 'script' as const, label: t('version.deployScript') },
   { key: 'docker' as const, label: t('version.deployDocker') }
 ])
@@ -710,23 +721,35 @@ const manualTabs = computed(() => [
 const scriptRollbackCommand = computed(() => {
   if (!selectedRollbackVersion.value) return ''
   const tag = `v${selectedRollbackVersion.value}`
-  return `curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/${tag}/deploy/install.sh | sudo bash -s -- rollback ${tag}`
+  if (appStore.updateRepository === 'DuskLin/sub2api') {
+    return `${t('version.manualBinaryHint')}\nhttps://github.com/${appStore.updateRepository}/releases/tag/${tag}`
+  }
+  return `curl -sSL https://raw.githubusercontent.com/${appStore.updateRepository}/${tag}/deploy/install.sh | sudo bash -s -- rollback ${tag}`
 })
 
 const dockerRollbackCommand = computed(() => {
   if (!selectedRollbackVersion.value) return ''
   return [
     `# ${t('version.dockerEditCompose')}`,
-    `image: ${DOCKER_IMAGE}:${selectedRollbackVersion.value}`,
+    `image: ${appStore.updateDockerImage}:${selectedRollbackVersion.value}`,
     '',
     `# ${t('version.dockerRecreate')}`,
-    'docker compose up -d'
+    'docker compose pull sub2api',
+    'docker compose up -d --no-deps sub2api'
   ].join('\n')
 })
 
 const activeManualCommand = computed(() =>
-  manualTab.value === 'docker' ? dockerRollbackCommand.value : scriptRollbackCommand.value
+  appStore.dockerDeployment || manualTab.value === 'docker' ? dockerRollbackCommand.value : scriptRollbackCommand.value
 )
+
+const dockerUpdateCommand = computed(() => [
+  `# ${t('version.dockerEditCompose')}`,
+  `image: ${appStore.updateDockerImage}:${latestVersion.value}`,
+  '',
+  'docker compose pull sub2api',
+  'docker compose up -d --no-deps sub2api'
+].join('\n'))
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')

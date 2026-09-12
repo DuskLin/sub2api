@@ -55,7 +55,10 @@ export default {
     deployScript: '脚本部署',
     deployDocker: 'Docker',
     dockerEditCompose: '修改 docker-compose.yml 中的镜像版本',
-    dockerRecreate: '重新创建容器'
+    dockerRecreate: '重新创建容器',
+    dockerUpdateHint: '先备份数据，将 Compose 中的 image 改为以下版本，再在服务器部署目录执行命令；使用自定义 Compose 文件时请加上 -f。',
+    dockerRollbackHint: '回退前请确认数据库兼容性；切换镜像不会撤销数据库迁移。',
+    manualBinaryHint: '从以下发布页面下载对应平台的二进制并手动替换：'
   },
 
   // Recharge / Subscription Page

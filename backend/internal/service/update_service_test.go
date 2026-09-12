@@ -31,14 +31,84 @@ type updateServiceGitHubClientStub struct {
 	release        *GitHubRelease
 	recentReleases []*GitHubRelease
 	recentErr      error
+	requestedRepo  string
 }
 
-func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
+	s.requestedRepo = repo
 	return s.release, nil
 }
 
-func (s *updateServiceGitHubClientStub) FetchRecentReleases(context.Context, string, int) ([]*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchRecentReleases(_ context.Context, repo string, _ int) ([]*GitHubRelease, error) {
+	s.requestedRepo = repo
 	return s.recentReleases, s.recentErr
+}
+
+func TestUpdateLocalChannel(t *testing.T) {
+	client := &updateServiceGitHubClientStub{recentReleases: []*GitHubRelease{
+		{TagName: "v9.0.0"},
+		{TagName: "v0.2.4-local.99", Draft: true},
+		{TagName: "v0.2.4-local.2", Prerelease: true},
+		{TagName: "v0.2.4-local.10", Prerelease: true},
+		{TagName: "v0.2.4-local.1", Prerelease: true},
+		{TagName: "v1.0.0-beta.1", Prerelease: true},
+		{TagName: "v1.0.0-local.bad", Prerelease: true},
+	}}
+	cache := &updateServiceCacheStub{}
+	svc := NewUpdateService(cache, client, "0.2.4-local.1", "release")
+	info, err := svc.CheckUpdate(context.Background(), true)
+	require.NoError(t, err)
+	require.Empty(t, info.Warning)
+	require.True(t, info.HasUpdate)
+	require.Equal(t, "0.2.4-local.10", info.LatestVersion)
+	require.Equal(t, localGitHubRepo, client.requestedRepo)
+	require.Equal(t, "jlliu0204/sub2api-local", info.DockerImage)
+
+	info, err = svc.CheckUpdate(context.Background(), false)
+	require.NoError(t, err)
+	require.True(t, info.Cached)
+	require.True(t, info.HasUpdate)
+
+	svc.currentVersion = "0.2.4-local.10"
+	versions, err := svc.ListRollbackVersions(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []RollbackVersion{{Version: "0.2.4-local.2"}, {Version: "0.2.4-local.1"}}, versions)
+
+	// Official cached data must never be offered to local installs (or vice versa).
+	svc.currentVersion = "0.2.4"
+	_, err = svc.getFromCache(context.Background())
+	require.Error(t, err)
+}
+
+func TestUpdateLocalVersionsCompareNumerically(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"0.2.4-local.1", "0.2.4-local.2"},
+		{"0.2.4-local.2", "0.2.4-local.10"},
+		{"0.2.4-local.10", "0.2.5-local.1"},
+		{"v0.2.4-local.1", "v0.2.4-local.2"},
+	} {
+		require.Less(t, compareVersions(pair[0], pair[1]), 0)
+		require.Greater(t, compareVersions(pair[1], pair[0]), 0)
+		require.Zero(t, compareVersions(pair[0], pair[0]))
+	}
+}
+
+func TestUpdateLocalChannelDoesNotFallBackToOfficial(t *testing.T) {
+	client := &updateServiceGitHubClientStub{recentReleases: []*GitHubRelease{{TagName: "v9.0.0"}}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.2.4-local.1", "release")
+	info, err := svc.CheckUpdate(context.Background(), true)
+	require.NoError(t, err)
+	require.False(t, info.HasUpdate)
+	require.Contains(t, info.Warning, "no published release")
+	require.Equal(t, localGitHubRepo, info.Repository)
+}
+
+func TestUpdateDockerRequiresImageReplacement(t *testing.T) {
+	t.Setenv("SUB2API_DEPLOYMENT", "docker")
+	svc := NewUpdateService(&updateServiceCacheStub{}, &updateServiceGitHubClientStub{}, "0.2.4-local.1", "release")
+	require.ErrorIs(t, svc.PerformUpdate(context.Background()), ErrContainerUpdate)
+	require.ErrorIs(t, svc.Rollback(), ErrContainerUpdate)
+	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "0.2.3-local.1"), ErrContainerUpdate)
 }
 
 func (s *updateServiceGitHubClientStub) DownloadFile(context.Context, string, string, int64) error {

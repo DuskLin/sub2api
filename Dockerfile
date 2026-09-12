@@ -106,6 +106,7 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # Stage 4: Final Runtime Image
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
+ENV SUB2API_DEPLOYMENT=docker
 
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"

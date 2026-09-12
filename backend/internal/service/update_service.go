@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -20,17 +21,21 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"golang.org/x/mod/semver"
 )
 
 var (
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	ErrContainerUpdate           = infraerrors.Conflict("CONTAINER_UPDATE_REQUIRED", "update or roll back the Docker image using Docker Compose")
+	localVersionPattern          = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+-local\.[0-9]+$`)
 )
 
 const (
-	updateCacheKey = "update_check_cache"
-	updateCacheTTL = 1200 // 20 minutes
-	githubRepo     = "Wei-Shaw/sub2api"
+	updateCacheKey  = "update_check_cache"
+	updateCacheTTL  = 1200 // 20 minutes
+	githubRepo      = "Wei-Shaw/sub2api"
+	localGitHubRepo = "DuskLin/sub2api"
 
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
@@ -61,31 +66,36 @@ type GitHubReleaseClient interface {
 
 // UpdateService handles software updates
 type UpdateService struct {
-	cache          UpdateCache
-	githubClient   GitHubReleaseClient
-	currentVersion string
-	buildType      string // "source" for manual builds, "release" for CI builds
+	cache            UpdateCache
+	githubClient     GitHubReleaseClient
+	currentVersion   string
+	buildType        string // "source" for manual builds, "release" for CI builds
+	dockerDeployment bool
 }
 
 // NewUpdateService creates a new UpdateService
 func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
 	return &UpdateService{
-		cache:          cache,
-		githubClient:   githubClient,
-		currentVersion: version,
-		buildType:      buildType,
+		cache:            cache,
+		githubClient:     githubClient,
+		currentVersion:   version,
+		buildType:        buildType,
+		dockerDeployment: os.Getenv("SUB2API_DEPLOYMENT") == "docker",
 	}
 }
 
 // UpdateInfo contains update information
 type UpdateInfo struct {
-	CurrentVersion string       `json:"current_version"`
-	LatestVersion  string       `json:"latest_version"`
-	HasUpdate      bool         `json:"has_update"`
-	ReleaseInfo    *ReleaseInfo `json:"release_info,omitempty"`
-	Cached         bool         `json:"cached"`
-	Warning        string       `json:"warning,omitempty"`
-	BuildType      string       `json:"build_type"` // "source" or "release"
+	CurrentVersion   string       `json:"current_version"`
+	LatestVersion    string       `json:"latest_version"`
+	HasUpdate        bool         `json:"has_update"`
+	ReleaseInfo      *ReleaseInfo `json:"release_info,omitempty"`
+	Cached           bool         `json:"cached"`
+	Warning          string       `json:"warning,omitempty"`
+	BuildType        string       `json:"build_type"` // "source" or "release"
+	DockerDeployment bool         `json:"docker_deployment"`
+	Repository       string       `json:"repository"`
+	DockerImage      string       `json:"docker_image"`
 }
 
 // ReleaseInfo contains GitHub release details
@@ -130,7 +140,17 @@ type GitHubAsset struct {
 }
 
 // CheckUpdate checks for available updates
-func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
+func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (info *UpdateInfo, err error) {
+	defer func() {
+		if info != nil {
+			info.DockerDeployment = s.dockerDeployment
+			info.Repository = s.releaseRepository()
+			info.DockerImage = "weishaw/sub2api"
+			if s.isLocalChannel() {
+				info.DockerImage = "jlliu0204/sub2api-local"
+			}
+		}
+	}()
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
@@ -139,7 +159,7 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 	}
 
 	// Fetch from GitHub
-	info, err := s.fetchLatestRelease(ctx)
+	info, err = s.fetchLatestRelease(ctx)
 	if err != nil {
 		// Return cached on error
 		if cached, cacheErr := s.getFromCache(ctx); cacheErr == nil && cached != nil {
@@ -163,6 +183,9 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if s.dockerDeployment {
+		return ErrContainerUpdate
+	}
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -281,6 +304,9 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.dockerDeployment {
+		return ErrContainerUpdate
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -305,7 +331,7 @@ func (s *UpdateService) Rollback() error {
 
 // ListRollbackVersions returns up to maxRollbackVersions release versions that are
 // strictly older than the current version (the current version itself is excluded),
-// newest first. Draft and prerelease entries are skipped.
+// newest first. Drafts and releases outside the current update channel are skipped.
 func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
 	releases, err := s.fetchRollbackCandidates(ctx)
 	if err != nil {
@@ -327,6 +353,9 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
+	if s.dockerDeployment {
+		return ErrContainerUpdate
+	}
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed
@@ -363,7 +392,11 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 // fetchRollbackCandidates fetches recent releases and keeps the newest
 // maxRollbackVersions entries strictly older than the current version.
 func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubRelease, error) {
-	releases, err := s.githubClient.FetchRecentReleases(ctx, githubRepo, rollbackFetchPageSize)
+	pageSize := rollbackFetchPageSize
+	if s.isLocalChannel() {
+		pageSize = 100
+	}
+	releases, err := s.githubClient.FetchRecentReleases(ctx, s.releaseRepository(), pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +404,7 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 	seen := make(map[string]bool, len(releases))
 	candidates := make([]*GitHubRelease, 0, maxRollbackVersions)
 	for _, r := range releases {
-		if r == nil || r.Draft || r.Prerelease {
+		if !s.acceptsRelease(r) {
 			continue
 		}
 		v := strings.TrimPrefix(r.TagName, "v")
@@ -400,9 +433,24 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 }
 
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
-	release, err := s.githubClient.FetchLatestRelease(ctx, githubRepo)
+	var release *GitHubRelease
+	var err error
+	if s.isLocalChannel() {
+		var releases []*GitHubRelease
+		releases, err = s.githubClient.FetchRecentReleases(ctx, s.releaseRepository(), 100)
+		for _, candidate := range releases {
+			if s.acceptsRelease(candidate) && (release == nil || compareVersions(candidate.TagName, release.TagName) > 0) {
+				release = candidate
+			}
+		}
+	} else {
+		release, err = s.githubClient.FetchLatestRelease(ctx, s.releaseRepository())
+	}
 	if err != nil {
 		return nil, err
+	}
+	if !s.acceptsRelease(release) {
+		return nil, fmt.Errorf("no published release found for %s update channel", s.releaseRepository())
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
@@ -600,12 +648,16 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 	}
 
 	var cached struct {
+		Repository  string       `json:"repository"`
 		Latest      string       `json:"latest"`
 		ReleaseInfo *ReleaseInfo `json:"release_info"`
 		Timestamp   int64        `json:"timestamp"`
 	}
 	if err := json.Unmarshal([]byte(data), &cached); err != nil {
 		return nil, err
+	}
+	if cached.Repository != s.releaseRepository() || isLocalVersion(cached.Latest) != s.isLocalChannel() {
+		return nil, fmt.Errorf("update cache belongs to a different release channel")
 	}
 
 	if time.Now().Unix()-cached.Timestamp > updateCacheTTL {
@@ -624,10 +676,12 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 
 func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 	cacheData := struct {
+		Repository  string       `json:"repository"`
 		Latest      string       `json:"latest"`
 		ReleaseInfo *ReleaseInfo `json:"release_info"`
 		Timestamp   int64        `json:"timestamp"`
 	}{
+		Repository:  s.releaseRepository(),
 		Latest:      info.LatestVersion,
 		ReleaseInfo: info.ReleaseInfo,
 		Timestamp:   time.Now().Unix(),
@@ -639,6 +693,10 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 
 // compareVersions compares two semantic versions
 func compareVersions(current, latest string) int {
+	c, l := "v"+strings.TrimPrefix(current, "v"), "v"+strings.TrimPrefix(latest, "v")
+	if semver.IsValid(c) && semver.IsValid(l) {
+		return semver.Compare(c, l)
+	}
 	currentParts := parseVersion(current)
 	latestParts := parseVersion(latest)
 
@@ -651,6 +709,31 @@ func compareVersions(current, latest string) int {
 		}
 	}
 	return 0
+}
+
+func isLocalVersion(version string) bool {
+	return localVersionPattern.MatchString(version) && semver.IsValid("v"+strings.TrimPrefix(version, "v"))
+}
+
+func (s *UpdateService) isLocalChannel() bool {
+	return isLocalVersion(s.currentVersion)
+}
+
+func (s *UpdateService) releaseRepository() string {
+	if s.isLocalChannel() {
+		return localGitHubRepo
+	}
+	return githubRepo
+}
+
+func (s *UpdateService) acceptsRelease(release *GitHubRelease) bool {
+	if release == nil || release.Draft {
+		return false
+	}
+	if s.isLocalChannel() {
+		return isLocalVersion(release.TagName)
+	}
+	return !release.Prerelease && !isLocalVersion(release.TagName)
 }
 
 func parseVersion(v string) [3]int {
