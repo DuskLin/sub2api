@@ -58,11 +58,19 @@ channel (including prereleases), and compares the numeric local revision.
 It never offers official stable releases to local builds. GitHub release checks
 are cached for 20 minutes; use the version badge's refresh button to check now.
 
-Docker images declare `SUB2API_DEPLOYMENT=docker`. The version badge provides
-image replacement commands for updates and rollback; in-place binary replacement
-is disabled in these containers. Back up data and set the application's Compose
-`image` to the desired tag, or set `SUB2API_IMAGE` in `.env` when the Compose file
-uses that variable, then run in the deployment directory:
+Docker images declare `SUB2API_DEPLOYMENT=docker`. Release builds support the
+version badge's **Update Now** and online rollback actions, including in Docker.
+They download the matching binary archive from the fork's GitHub Release,
+verify its checksum when provided, and replace the executable while retaining a
+backup. Click **Restart Now** afterwards; the supplied Compose restart policy
+restarts the container with the updated binary. Full releases are required:
+the simple image-only release mode does not publish binary archives.
+
+An in-place update changes the container's executable, not its image tag.
+It survives a restart of that container, but recreating the container restores
+the binary from its configured image. To update the image too, back up data and
+set Compose `image` to the desired tag (or set `SUB2API_IMAGE` in `.env` when
+the Compose file uses that variable), then run in the deployment directory:
 
 ```bash
 docker compose pull sub2api
@@ -70,8 +78,9 @@ docker compose up -d --no-deps sub2api
 ```
 
 Add `-f` to both commands if using a custom Compose filename. Replacing an image
-does not undo database migrations. Existing `local.1`/`local.2` builds must first
-be upgraded manually to a release containing this update-channel support.
+does not undo database migrations. Older builds without local update-channel
+support, or with the Docker update button disabled, must first be upgraded
+manually to a release containing this restoration.
 Publishing a new image alone cannot change the updater inside an old container.
 
 ### Method 1: One-Click Deployment (Recommended)

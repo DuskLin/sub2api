@@ -321,15 +321,7 @@
                 </div>
 
                 <!-- Update button -->
-                <div v-if="appStore.dockerDeployment" class="space-y-2">
-                  <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('version.dockerUpdateHint') }}</p>
-                  <code class="block whitespace-pre-wrap break-all rounded bg-gray-50 p-2 text-xs dark:bg-dark-900">{{ dockerUpdateCommand }}</code>
-                  <button @click="copyToClipboard(dockerUpdateCommand)" class="text-xs text-primary-500">
-                    {{ copied ? t('version.copied') : t('version.copyCommand') }}
-                  </button>
-                </div>
                 <button
-                  v-else
                   @click="handleUpdate"
                   :disabled="updating"
                   class="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -584,7 +576,7 @@
                                 :stroke-width="2"
                                 class="mt-px flex-shrink-0"
                               />
-                              {{ t(appStore.dockerDeployment ? 'version.dockerRollbackHint' : 'version.rollbackWarning') }}
+                              {{ t('version.rollbackWarning') }}
                             </p>
 
                             <p
@@ -595,7 +587,6 @@
                             </p>
 
                             <button
-                              v-if="!appStore.dockerDeployment"
                               @click="handleRollback"
                               :disabled="rollingBack"
                               class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -742,14 +733,6 @@ const dockerRollbackCommand = computed(() => {
 const activeManualCommand = computed(() =>
   appStore.dockerDeployment || manualTab.value === 'docker' ? dockerRollbackCommand.value : scriptRollbackCommand.value
 )
-
-const dockerUpdateCommand = computed(() => [
-  `# ${t('version.dockerEditCompose')}`,
-  `image: ${appStore.updateDockerImage}:${latestVersion.value}`,
-  '',
-  'docker compose pull sub2api',
-  'docker compose up -d --no-deps sub2api'
-].join('\n'))
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')

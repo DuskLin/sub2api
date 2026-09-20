@@ -57,8 +57,6 @@ export default {
     deployDocker: 'Docker',
     dockerEditCompose: 'Edit the image tag in docker-compose.yml',
     dockerRecreate: 'Recreate the container',
-    dockerUpdateHint: 'Back up data, set the Compose image to the version below, then run these commands in the server deployment directory. Add -f for a custom Compose file.',
-    dockerRollbackHint: 'Check database compatibility before rollback; switching images does not undo database migrations.',
     manualBinaryHint: 'Download the binary for your platform from this release and replace it manually:'
   },
 

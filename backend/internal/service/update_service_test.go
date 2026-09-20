@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -32,6 +34,8 @@ type updateServiceGitHubClientStub struct {
 	recentReleases []*GitHubRelease
 	recentErr      error
 	requestedRepo  string
+	downloadURL    string
+	downloadErr    error
 }
 
 func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
@@ -103,15 +107,43 @@ func TestUpdateLocalChannelDoesNotFallBackToOfficial(t *testing.T) {
 	require.Equal(t, localGitHubRepo, info.Repository)
 }
 
-func TestUpdateDockerRequiresImageReplacement(t *testing.T) {
+func TestUpdateDockerDownloadsLocalRelease(t *testing.T) {
 	t.Setenv("SUB2API_DEPLOYMENT", "docker")
-	svc := NewUpdateService(&updateServiceCacheStub{}, &updateServiceGitHubClientStub{}, "0.2.4-local.1", "release")
-	require.ErrorIs(t, svc.PerformUpdate(context.Background()), ErrContainerUpdate)
-	require.ErrorIs(t, svc.Rollback(), ErrContainerUpdate)
-	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "0.2.3-local.1"), ErrContainerUpdate)
+	// Stop at the download boundary: never replace the running test executable.
+	stopDownload := errors.New("test download boundary")
+	assetName := fmt.Sprintf("sub2api_0.2.7-local.1_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	assetURL := "https://github.com/DuskLin/sub2api/releases/download/v0.2.7-local.1/" + assetName
+	client := &updateServiceGitHubClientStub{
+		downloadErr: stopDownload,
+		recentReleases: []*GitHubRelease{
+			{TagName: "v9.0.0"}, // Stable releases are outside the local channel.
+			{TagName: "v0.2.7-local.1", Prerelease: true, Assets: []GitHubAsset{{Name: assetName, BrowserDownloadURL: assetURL}}},
+		},
+	}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.2.5-local.1", "release")
+	require.ErrorIs(t, svc.PerformUpdate(context.Background()), stopDownload)
+	require.Equal(t, localGitHubRepo, client.requestedRepo)
+	require.Equal(t, assetURL, client.downloadURL)
+
+	// Online rollback also works in Docker, but only to a listed older local version.
+	client.downloadURL = ""
+	svc.currentVersion = "0.2.7-local.2"
+	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "0.2.7-local.1"), stopDownload)
+	require.Equal(t, assetURL, client.downloadURL)
+	client.downloadURL = ""
+	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "9.0.0"), ErrRollbackVersionNotAllowed)
+	require.Empty(t, client.downloadURL)
+
+	// An up-to-date container should still get the normal no-update response.
+	svc.currentVersion = "0.2.7-local.1"
+	require.ErrorIs(t, svc.PerformUpdate(context.Background()), ErrNoUpdateAvailable)
 }
 
-func (s *updateServiceGitHubClientStub) DownloadFile(context.Context, string, string, int64) error {
+func (s *updateServiceGitHubClientStub) DownloadFile(_ context.Context, url, _ string, _ int64) error {
+	if s.downloadErr != nil {
+		s.downloadURL = url
+		return s.downloadErr
+	}
 	panic("DownloadFile should not be called when no update is available")
 }
 
